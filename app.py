@@ -1,8 +1,10 @@
-from flask import Flask, render_template, request, jsonify, send_file, send_from_directory
+from flask import Flask, render_template, request, jsonify, send_file
 import os
 import json
 import subprocess
 import threading
+import re
+import platform
 from datetime import timedelta
 import cv2
 import numpy as np
@@ -326,7 +328,8 @@ def execute_ffmpeg(commands, task_id, input_file, output_file):
             
             if result.returncode != 0:
                 processing_status[task_id]['status'] = 'error'
-                processing_status[task_id]['error'] = result.stderr[:500]
+                # FIX: Read the LAST 500 chars of error so we see the actual issue, not the FFmpeg copyright text
+                processing_status[task_id]['error'] = result.stderr[-500:]
                 # Cleanup temp files
                 for t in temp_outputs:
                     if os.path.exists(t):
@@ -614,6 +617,95 @@ def manifest():
             }
         ]
     })
+
+
+@app.route('/api/run-claude-commands', methods=['POST'])
+def run_claude_commands():
+    data = request.json
+    task_id = data.get('task_id')
+    claude_text = data.get('claude_text', '')
+
+    if not task_id or not claude_text:
+        return jsonify({'error': 'Missing data'}), 400
+
+    task = processing_status.get(task_id)
+    if not task:
+        return jsonify({'error': 'Task not found'}), 404
+
+    # 1. SMART PARSER: Join multi-line commands perfectly
+    lines = claude_text.split('\n')
+    full_command = ""
+    extracted_commands = []
+    
+    for line in lines:
+        stripped = line.rstrip()
+        
+        is_continuation = stripped.endswith('\\')
+        if is_continuation:
+            stripped = stripped[:-1].rstrip() 
+        
+        if stripped.startswith('#') or stripped.startswith('```') or not stripped:
+            continue
+            
+        if stripped.startswith('ffmpeg'):
+            if full_command:
+                extracted_commands.append(full_command.strip())
+            full_command = stripped + " "
+        elif full_command:
+            if is_continuation:
+                full_command += stripped 
+            else:
+                full_command += stripped + " "
+                
+    if full_command:
+        extracted_commands.append(full_command.strip())
+
+    if not extracted_commands:
+        return jsonify({'error': 'No valid ffmpeg commands found in the pasted text.'}), 400
+
+    # 2. SMART FIXER: Replace Claude's fake file names with your REAL file paths
+    final_commands = []
+    input_path = task['filepath'].replace('\\', '/') 
+    output_path = os.path.join(app.config['OUTPUT_FOLDER'], f"edited_{task['filename']}").replace('\\', '/')
+
+    for cmd in extracted_commands:
+        
+        # Fix Input File
+        if '{INPUT}' in cmd:
+            cmd = cmd.replace('{INPUT}', input_path)
+        else:
+            # Find "-i input.mp4" and replace just the filename safely
+            cmd = re.sub(r'(-i\s+)\S+', fr'\1"{input_path}"', cmd, count=1)
+        
+        # Fix Output File
+        if '{OUTPUT}' in cmd:
+            cmd = cmd.replace('{OUTPUT}', output_path)
+        else:
+            # Find the last file at the very end of the command (e.g. output.mp4)
+            cmd = re.sub(r'(\s)\S+\.(?:mp4|mov|avi|mkv|webm)(\s*)$', fr'\1"{output_path}"\2', cmd)
+
+        # Fix Font Paths based on OS
+        if platform.system() == 'Windows':
+            cmd = cmd.replace('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', 'C\\:/Windows/Fonts/arialbd.ttf')
+        elif platform.system() == 'Darwin': # Mac
+            cmd = cmd.replace('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', '/System/Library/Fonts/Supplemental/Arial Bold.ttf')
+
+        final_commands.append({
+            'name': f'Claude Command {len(final_commands)+1}',
+            'icon': '🤖',
+            'command': cmd
+        })
+
+    output_file = os.path.join(app.config['OUTPUT_FOLDER'], f"edited_{task['filename']}")
+
+    # 3. Start processing in background
+    thread = threading.Thread(
+        target=execute_ffmpeg,
+        args=(final_commands, task_id, task['filepath'], output_file)
+    )
+    thread.start()
+
+    return jsonify({'message': f'Executing {len(final_commands)} Claude command(s) with fixed paths'})
 
 
 if __name__ == '__main__':

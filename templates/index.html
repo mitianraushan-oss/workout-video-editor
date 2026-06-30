@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#0f0f1a">
+    <link rel="manifest" href="/manifest.json">
+    <title>Workout Video Editor</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <i class="fas fa-dumbbell"></i>
+                    <span>WorkoutEdit</span>
+                </div>
+                <div class="header-actions">
+                    <button id="helpBtn" class="icon-btn" title="Help">
+                        <i class="fas fa-question-circle"></i>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Step Indicator -->
+            <div class="steps-indicator">
+                <div class="step active" data-step="1">
+                    <div class="step-number">1</div>
+                    <div class="step-label">Upload</div>
+                </div>
+                <div class="step-line"></div>
+                <div class="step" data-step="2">
+                    <div class="step-number">2</div>
+                    <div class="step-label">Analyze</div>
+                </div>
+                <div class="step-line"></div>
+                <div class="step" data-step="3">
+                    <div class="step-number">3</div>
+                    <div class="step-label">Edit</div>
+                </div>
+                <div class="step-line"></div>
+                <div class="step" data-step="4">
+                    <div class="step-number">4</div>
+                    <div class="step-label">Export</div>
+                </div>
+            </div>
+
+            <!-- Section 1: Upload -->
+            <section id="uploadSection" class="section active">
+                <h2 class="section-title">
+                    <i class="fas fa-cloud-upload-alt"></i>
+                    Upload Your Workout
+                </h2>
+                
+                <div class="upload-zone" id="uploadZone">
+                    <div class="upload-icon">
+                        <i class="fas fa-video"></i>
+                    </div>
+                    <p class="upload-text">Drag & drop your video here</p>
+                    <p class="upload-subtext">or tap to browse</p>
+                    <p class="upload-formats">MP4, MOV, AVI, MKV (max 500MB)</p>
+                    <input type="file" id="videoInput" accept="video/*" hidden>
+                </div>
+
+                <!-- Preview -->
+                <div id="previewContainer" class="preview-container hidden">
+                    <video id="videoPreview" controls></video>
+                    <div class="file-info" id="fileInfo"></div>
+                    <button id="removeFile" class="btn btn-secondary btn-sm">
+                        <i class="fas fa-times"></i> Remove
+                    </button>
+                </div>
+
+                <!-- Music Upload -->
+                <div class="optional-upload">
+                    <div class="optional-header" id="musicToggle">
+                        <i class="fas fa-music"></i>
+                        <span>Add Background Music (Optional)</span>
+                        <i class="fas fa-chevron-down toggle-icon"></i>
+                    </div>
+                    <div class="optional-content hidden" id="musicContent">
+                        <div class="upload-zone small" id="musicZone">
+                            <i class="fas fa-music"></i>
+                            <p>Drop music file or tap to browse</p>
+                            <p class="upload-formats">MP3, WAV, AAC, OGG</p>
+                            <input type="file" id="musicInput" accept="audio/*" hidden>
+                        </div>
+                        <div id="musicInfo" class="file-info hidden"></div>
+                    </div>
+                </div>
+
+                <button id="analyzeBtn" class="btn btn-primary btn-full" disabled>
+                    <i class="fas fa-search"></i>
+                    Analyze Video
+                </button>
+            </section>
+
+            <!-- Section 2: Analysis -->
+            <section id="analysisSection" class="section">
+                <h2 class="section-title">
+                    <i class="fas fa-chart-bar"></i>
+                    Video Analysis
+                </h2>
+
+                <!-- Progress -->
+                <div id="analysisProgress" class="progress-container">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="analysisFill"></div>
+                    </div>
+                    <p class="progress-text" id="analysisText">Analyzing video...</p>
+                </div>
+
+                <!-- Results -->
+                <div id="analysisResults" class="hidden">
+                    <!-- Stats Grid -->
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-icon"><i class="fas fa-clock"></i></div>
+                            <div class="stat-value" id="statDuration">--</div>
+                            <div class="stat-label">Duration</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon"><i class="fas fa-expand"></i></div>
+                            <div class="stat-value" id="statResolution">--</div>
+                            <div class="stat-label">Resolution</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon"><i class="fas fa-sun"></i></div>
+                            <div class="stat-value" id="statBrightness">--</div>
+                            <div class="stat-label">Brightness</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon"><i class="fas fa-running"></i></div>
+                            <div class="stat-value" id="statReps">--</div>
+                            <div class="stat-label">Est. Reps</div>
+                        </div>
+                    </div>
+
+                    <!-- Motion Timeline -->
+                    <div class="card">
+                        <h3 class="card-title">
+                            <i class="fas fa-wave-square"></i>
+                            Motion Timeline
+                        </h3>
+                        <div class="timeline" id="motionTimeline"></div>
+                    </div>
+
+                    <!-- Detected Segments -->
+                    <div class="card">
+                        <h3 class="card-title">
+                            <i class="fas fa-cut"></i>
+                            Exercise Segments
+                        </h3>
+                        <div class="segments-list" id="segmentsList"></div>
+                    </div>
+
+                    <!-- Suggestions -->
+                    <div class="card">
+                        <h3 class="card-title">
+                            <i class="fas fa-lightbulb"></i>
+                            Suggestions
+                        </h3>
+                        <div class="suggestions-list" id="suggestionsList"></div>
+                    </div>
+
+                    <button id="toEditBtn" class="btn btn-primary btn-full">
+                        <i class="fas fa-arrow-right"></i>
+                        Continue to Edit
+                    </button>
+                </div>
+            </section>
+
+            <!-- Section 3: Edit -->
+            <section id="editSection" class="section">
+                <h2 class="section-title">
+                    <i class="fas fa-sliders-h"></i>
+                    Edit Settings
+                </h2>
+
+                <div class="edit-options">
+                    <!-- Workout Type -->
+                    <div class="form-group">
+                        <label class="form-label">
+                            <i class="fas fa-dumbbell"></i>
+                            Workout Type
+                        </label>
+                        <div class="pill-selector" id="workoutType">
+                            <button class="pill" data-value="chest">Chest</button>
+                            <button class="pill" data-value="back">Back</button>
+                            <button class="pill" data-value="legs">Legs</button>
+                            <button class="pill" data-value="shoulders">Shoulders</button>
+                            <button class="pill" data-value="arms">Arms</button>
+                            <button class="pill" data-value="full body">Full Body</button>
+                            <button class="pill" data-value="cardio">Cardio</button>
+                            <button class="pill" data-value="custom">Custom</button>
+                        </div>
+                        <input type="text" id="customWorkout" class="form-input hidden" placeholder="Enter workout type">
+                    </div>
+
+                    <!-- Mood -->
+                    <div class="form-group">
+                        <label class="form-label">
+                            <i class="fas fa-fire"></i>
+                            Mood
+                        </label>
+                        <div class="pill-selector" id="moodType">
+                            <button class="pill active" data-value="energetic">⚡ Energetic</button>
+                            <button class="pill" data-value="intense">🔥 Intense</button>
+                            <button class="pill" data-value="chill">🌊 Chill</button>
+                            <button class="pill" data-value="cinematic">🎬 Cinematic</button>
+                        </div>
+                    </div>
+
+                    <!-- Platform -->
+                    <div class="form-group">
+                        <label class="form-label">
+                            <i class="fas fa-mobile-alt"></i>
+                            Target Platform
+                        </label>
+                        <div class="platform-selector" id="platformType">
+                            <button class="platform-btn active" data-value="instagram-reels">
+                                <i class="fab fa-instagram"></i>
+                                <span>Reels</span>
+                            </button>
+                            <button class="platform-btn" data-value="tiktok">
+                                <i class="fab fa-tiktok"></i>
+                                <span>TikTok</span>
+                            </button>
+                            <button class="platform-btn" data-value="youtube">
+                                <i class="fab fa-youtube"></i>
+                                <span>YouTube</span>
+                            </button>
+                            <button class="platform-btn" data-value="twitter">
+                                <i class="fab fa-twitter"></i>
+                                <span>Twitter</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Music Volume -->
+                    <div class="form-group" id="musicVolumeGroup">
+                        <label class="form-label">
+                            <i class="fas fa-volume-up"></i>
+                            Music Volume: <span id="volumeValue">15%</span>
+                        </label>
+                        <input type="range" id="musicVolume" class="range-input" min="5" max="50" value="15">
+                    </div>
+
+                    <!-- Toggle Options -->
+                    <div class="toggle-options">
+                        <div class="toggle-item">
+                            <span>Auto-add text overlays</span>
+                            <label class="toggle">
+                                <input type="checkbox" id="addText" checked>
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                        <div class="toggle-item">
+                            <span>Add fade effects</span>
+                            <label class="toggle">
+                                <input type="checkbox" id="addFade" checked>
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                        <div class="toggle-item">
+                            <span>Auto brightness fix</span>
+                            <label class="toggle">
+                                <input type="checkbox" id="autoBrightness" checked>
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Generated Commands -->
+                <div class="card" id="commandsCard">
+                    <h3 class="card-title">
+                        <i class="fas fa-terminal"></i>
+                        Generated Commands
+                        <button id="generateCmdBtn" class="btn btn-secondary btn-sm">
+                            <i class="fas fa-sync"></i> Generate
+                        </button>
+                    </h3>
+                    <div id="commandsList" class="commands-list">
+                        <p class="empty-text">Click "Generate" to create FFmpeg commands</p>
+                    </div>
+                </div>
+
+                <!-- Claude AI Integration (Updated Section) -->
+                <div class="card">
+                    <h3 class="card-title">
+                        <i class="fas fa-robot"></i>
+                        Claude AI Custom Edit
+                    </h3>
+                    
+                    <!-- Step 1: Generate & Copy Prompt -->
+                    <label class="form-label" style="margin-bottom: 8px;">
+                        <i class="fas fa-copy"></i>
+                        Step 1: Copy this prompt to Claude.ai
+                    </label>
+                    <div class="prompt-container" style="margin-bottom: 15px;">
+                        <textarea id="claudePrompt" class="prompt-textarea" readonly 
+                            placeholder="Click 'Generate Prompt' first..."></textarea>
+                        <div style="display: flex; gap: 10px; margin-top: 8px;">
+                            <button id="generatePromptBtn" class="btn btn-secondary btn-sm" style="flex:1;">
+                                <i class="fas fa-magic"></i> Generate Prompt
+                            </button>
+                            <button id="copyPromptBtn" class="btn btn-secondary btn-sm hidden" style="flex:1;">
+                                <i class="fas fa-copy"></i> Copy to Clipboard
+                            </button>
+                        </div>
+                    </div>
+
+                    <hr style="border-color: var(--border); margin: 20px 0;">
+
+                    <!-- Step 2: Paste Claude's Response -->
+                    <label class="form-label" style="margin-bottom: 8px;">
+                        <i class="fas fa-paste"></i>
+                        Step 2: Paste Claude's FFmpeg response here
+                    </label>
+                    <div class="prompt-container">
+                        <textarea id="claudeResponse" class="prompt-textarea" 
+                            placeholder="Paste the exact ffmpeg code block Claude gives you here..."></textarea>
+                    </div>
+                    <p class="hint-text" style="margin-bottom: 15px;">
+                        <i class="fas fa-info-circle"></i>
+                        Paste the code block Claude replies with. The app will extract and run it automatically.
+                    </p>
+
+                    <button id="runClaudeCmdsBtn" class="btn btn-primary btn-full" disabled>
+                        <i class="fas fa-play"></i>
+                        Run Claude's Custom Commands
+                    </button>
+                </div>
+
+                <button id="processBtn" class="btn btn-primary btn-full" disabled>
+                    <i class="fas fa-cog"></i>
+                    Process Video (Auto-Commands)
+                </button>
+            </section>
+
+            <!-- Section 4: Export -->
+            <section id="exportSection" class="section">
+                <h2 class="section-title">
+                    <i class="fas fa-download"></i>
+                    Export
+                </h2>
+
+                <!-- Processing Progress -->
+                <div id="processProgress" class="progress-container hidden">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="processFill"></div>
+                    </div>
+                    <p class="progress-text" id="processText">Processing...</p>
+                    <p class="progress-step" id="processStep"></p>
+                </div>
+
+                <!-- Complete -->
+                <div id="exportComplete" class="hidden">
+                    <div class="success-animation">
+                        <i class="fas fa-check-circle"></i>
+                    </div>
+                    <h3 class="success-title">Video Ready!</h3>
+                    <p class="success-text">Your workout video has been processed successfully</p>
+                    
+                    <div class="export-preview">
+                        <video id="outputPreview" controls></video>
+                    </div>
+
+                    <button id="downloadBtn" class="btn btn-primary btn-full btn-lg">
+                        <i class="fas fa-download"></i>
+                        Download Video
+                    </button>
+
+                    <button id="startOverBtn" class="btn btn-secondary btn-full">
+                        <i class="fas fa-redo"></i>
+                        Start Over
+                    </button>
+                </div>
+
+                <!-- Error -->
+                <div id="exportError" class="hidden">
+                    <div class="error-animation">
+                        <i class="fas fa-exclamation-circle"></i>
+                    </div>
+                    <h3 class="error-title">Processing Error</h3>
+                    <p class="error-text" id="errorMessage"></p>
+                    <button id="retryBtn" class="btn btn-primary btn-full">
+                        <i class="fas fa-redo"></i>
+                        Retry
+                    </button>
+                </div>
+            </section>
+        </main>
+
+        <!-- Help Modal -->
+        <div id="helpModal" class="modal hidden">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>How to Use</h3>
+                    <button class="modal-close" id="closeHelp">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div class="help-step">
+                        <div class="help-number">1</div>
+                        <div>
+                            <h4>Upload Video</h4>
+                            <p>Select your workout video file (MP4, MOV, etc.)</p>
+                        </div>
+                    </div>
+                    <div class="help-step">
+                        <div class="help-number">2</div>
+                        <div>
+                            <h4>Analyze</h4>
+                            <p>AI detects exercises, rest periods, and issues</p>
+                        </div>
+                    </div>
+                    <div class="help-step">
+                        <div class="help-number">3</div>
+                        <div>
+                            <h4>Customize</h4>
+                            <p>Choose workout type, mood, and platform. Use Auto-Edit or Claude AI.</p>
+                        </div>
+                    </div>
+                    <div class="help-step">
+                        <div class="help-number">4</div>
+                        <div>
+                            <h4>Process & Download</h4>
+                            <p>Get your edited video ready for social media</p>
+                        </div>
+                    </div>
+                    <div class="help-tip">
+                        <i class="fas fa-lightbulb"></i>
+                        <p><strong>Pro Tip:</strong> Use the Claude prompt for more advanced custom edits that Claude can generate for you!</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Toast Notification -->
+        <div id="toast" class="toast hidden">
+            <i class="fas fa-check-circle"></i>
+            <span id="toastMessage"></span>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
