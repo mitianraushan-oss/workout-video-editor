@@ -189,6 +189,9 @@ function handleVideoFile(file) {
         elements.videoPreview.src = url;
     }
 
+    // Match the analyze button label to the file type
+    elements.analyzeBtn.innerHTML = `<i class="fas fa-search"></i> Analyze ${isImage ? 'Image' : 'Video'}`;
+
     // Upload to server
     uploadFile(file);
 }
@@ -231,6 +234,7 @@ elements.removeFile.addEventListener('click', () => {
     elements.uploadZone.classList.remove('hidden');
     elements.videoPreview.src = '';
     elements.analyzeBtn.disabled = true;
+    elements.analyzeBtn.innerHTML = '<i class="fas fa-search"></i> Analyze Video';
     state.filename = null;
     state.taskId = null;
     elements.videoInput.value = '';
@@ -632,6 +636,7 @@ function resetApp() {
     elements.uploadZone.classList.remove('hidden');
     elements.videoPreview.src = '';
     elements.analyzeBtn.disabled = true;
+    elements.analyzeBtn.innerHTML = '<i class="fas fa-search"></i> Analyze Video';
     elements.videoInput.value = '';
     elements.musicInput.value = '';
     elements.musicInfo.classList.add('hidden');
