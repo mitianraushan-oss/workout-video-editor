@@ -157,16 +157,26 @@ elements.uploadZone.addEventListener('drop', (e) => {
 
 // Handle video file
 function handleVideoFile(file) {
-    // Validate
-    const validTypes = ['video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/x-matroska', 'video/webm'];
-    if (!validTypes.includes(file.type) && !file.name.match(/\.(mp4|mov|avi|mkv|webm)$/i)) {
-        showToast('Invalid video format');
+       // Validate
+    const validTypes = ['video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/x-matroska', 'video/webm', 'image/jpeg', 'image/png', 'image/webp'];
+    if (!validTypes.includes(file.type) && !file.name.match(/\.(mp4|mov|avi|mkv|webm|jpg|jpeg|png)$/i)) {
+        showToast('Invalid file format');
         return;
     }
-
-    // Show preview
+    
+    // Show preview for images or videos
     const url = URL.createObjectURL(file);
-    elements.videoPreview.src = url;
+    const isImage = file.type.startsWith('image/');
+
+       // Show preview (Handle both Video and Image)
+    const url = URL.createObjectURL(file);
+    if (isImage) {
+        elements.videoPreview.style.display = 'none'; // Hide video player
+        // If you want to show the image, you could add an <img> tag, but leaving it hidden is fine for now!
+    } else {
+        elements.videoPreview.style.display = 'block';
+        elements.videoPreview.src = url;
+    }
     elements.fileInfo.innerHTML = `
         <i class="fas fa-video"></i>
         <span>${file.name}</span>
@@ -542,8 +552,11 @@ async function checkProcessStatus() {
         const response = await fetch(`/api/status/${state.taskId}`);
         const data = await response.json();
 
-        elements.processFill.style.width = data.progress + '%';
-        elements.processText.textContent = `Processing... ${Math.round(data.progress)}%`;
+               // Safety net: Prevent "NaN%" if data is missing or invalid
+        const progress = Number(data.progress) || 0; 
+
+        elements.processFill.style.width = progress + '%';
+        elements.processText.textContent = `Processing... ${Math.round(progress)}%`;
         if (data.current_step) {
             elements.processStep.textContent = data.current_step;
         }

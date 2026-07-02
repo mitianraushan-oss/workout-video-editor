@@ -305,6 +305,7 @@ def execute_ffmpeg(commands, task_id, input_file, output_file):
     """Execute FFmpeg commands"""
     try:
         processing_status[task_id]['status'] = 'processing'
+        processing_status[task_id]['progress'] = 0  # <--- ADD THIS LINE
         
         current_input = input_file
         temp_outputs = []
@@ -369,8 +370,14 @@ def upload_file():
     if file.filename == '':
         return jsonify({'error': 'No file selected'}), 400
     
-    if not allowed_file(file.filename, 'video'):
-        return jsonify({'error': 'Invalid video format'}), 400
+      is_image = file.filename.lower().endswith(('.jpg', '.jpeg', '.png', '.webp'))
+    
+    if is_image:
+        if not allowed_file(file.filename, 'image'):
+            return jsonify({'error': 'Invalid image format'}), 400
+    else:
+        if not allowed_file(file.filename, 'video'):
+            return jsonify({'error': 'Invalid video format'}), 400
     
     filename = secure_filename(file.filename)
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
@@ -409,12 +416,24 @@ def start_analysis(task_id):
     if task_id not in processing_status:
         return jsonify({'error': 'Task not found'}), 404
     
-    # Start analysis in background
-    thread = threading.Thread(
-        target=analyze_video,
-        args=(processing_status[task_id]['filepath'], task_id)
-    )
-    thread.start()
+    task = processing_status[task_id]
+    is_image = task['filename'].lower().endswith(('.jpg', '.jpeg', '.png', '.webp'))
+    
+    if is_image:
+        # Analyze image instantly (no need for background thread)
+        from workout_analyzer import WorkoutImageAnalyzer
+        img_analyzer = WorkoutImageAnalyzer(task['filepath'])
+        img_analyzer.analyze()
+        processing_status[task_id]['analysis'] = img_analyzer.analysis
+        processing_status[task_id]['status'] = 'analyzed'
+        processing_status[task_id]['progress'] = 100
+    else:
+        # Start video analysis in background
+        thread = threading.Thread(
+            target=analyze_video,
+            args=(task['filepath'], task_id)
+        )
+        thread.start()
     
     return jsonify({'message': 'Analysis started'})
 
