@@ -67,6 +67,16 @@ def run_ffmpeg_pipeline(commands, task_id, input_file, output_file, processing_s
 
         cleanup_temps()
 
+        # Never report success unless the expected output actually exists —
+        # a command may have written somewhere we failed to redirect
+        if not os.path.exists(output_file):
+            processing_status[task_id]['status'] = 'error'
+            processing_status[task_id]['error'] = (
+                'Processing finished but no output file was produced at the '
+                'expected location. Check that the command writes to {OUTPUT}.'
+            )
+            return
+
         processing_status[task_id]['status'] = 'completed'
         processing_status[task_id]['progress'] = 100
         processing_status[task_id]['output_file'] = output_file
@@ -142,13 +152,13 @@ def build_image_commands(analysis, preferences):
                 'command': f'ffmpeg -i "{{INPUT}}" -vf "scale={w}:{h}:force_original_aspect_ratio=decrease:flags=lanczos,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2" "{{OUTPUT}}"'
             })
 
-    # Workout label overlay
-    if preferences.get('add_text', True):
-        workout_type = preferences.get('workout_type', '').upper() or 'WORKOUT'
+    # Label overlay (only when the user picked a content label)
+    label = preferences.get('workout_type', '').upper()
+    if preferences.get('add_text', True) and label:
         commands.append({
-            'name': f'Add Text: {workout_type}',
+            'name': f'Add Text: {label}',
             'icon': '📝',
-            'command': f'''ffmpeg -i "{{INPUT}}" -vf "drawtext=text='{workout_type}':fontsize=50:fontcolor=white:x=(w-text_w)/2:y=50:boxcolor=black@0.6:box=1" "{{OUTPUT}}"'''
+            'command': f'''ffmpeg -i "{{INPUT}}" -vf "drawtext=text='{label}':fontsize=50:fontcolor=white:x=(w-text_w)/2:y=50:boxcolor=black@0.6:box=1" "{{OUTPUT}}"'''
         })
 
     if not commands:
@@ -205,16 +215,17 @@ def build_commands(analysis, preferences, music_path):
                 'command': f'ffmpeg -i "{{INPUT}}" -vf "scale={w}:{h}:force_original_aspect_ratio=decrease:flags=lanczos,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2" -c:a copy "{{OUTPUT}}"'
             })
 
-    # Add text overlays
-    workout_type = preferences.get('workout_type', '').upper() or 'EXERCISE'
-    for i, seg in enumerate(analysis['motion_segments'][:6]):
-        if seg['duration'] > 1.5:
-            duration = min(3, seg['duration'])
-            commands.append({
-                'name': f'Add Text: {workout_type} #{i+1}',
-                'icon': '📝',
-                'command': f'''ffmpeg -i "{{INPUT}}" -vf "drawtext=text='{workout_type} %{i+1}':fontsize=50:fontcolor=white:x=(w-text_w)/2:y=50:boxcolor=black@0.6:box=1:enable='between(t,{seg["start_time"]},{seg["start_time"] + duration})'" -c:a copy "{{OUTPUT}}"'''
-            })
+    # Add text overlays (only when the user picked a content label)
+    label = preferences.get('workout_type', '').upper()
+    if preferences.get('add_text', True) and label:
+        for i, seg in enumerate(analysis['motion_segments'][:6]):
+            if seg['duration'] > 1.5:
+                duration = min(3, seg['duration'])
+                commands.append({
+                    'name': f'Add Text: {label} #{i+1}',
+                    'icon': '📝',
+                    'command': f'''ffmpeg -i "{{INPUT}}" -vf "drawtext=text='{label} %{i+1}':fontsize=50:fontcolor=white:x=(w-text_w)/2:y=50:boxcolor=black@0.6:box=1:enable='between(t,{seg["start_time"]},{seg["start_time"] + duration})'" -c:a copy "{{OUTPUT}}"'''
+                })
 
     # Add music (-stream_loop must precede the input it applies to)
     if preferences.get('add_music') and music_path:
@@ -249,32 +260,44 @@ def build_commands(analysis, preferences, music_path):
     return commands
 
 
+# Shell-style variable assignment, e.g. NAME="LEG DAY" or NAME=value
+_ASSIGNMENT_RE = re.compile(r'^([A-Za-z_][A-Za-z0-9_]*)=(?:"([^"]*)"|\'([^\']*)\'|(\S+))\s*$')
+
+
 def parse_claude_commands(claude_text, input_path, output_path):
     """Extract ffmpeg commands from pasted Claude output and pin file paths
     to the task's real input/output files."""
     lines = claude_text.split('\n')
     full_command = ""
     extracted_commands = []
+    variables = {}
 
     for line in lines:
         stripped = line.rstrip()
 
         is_continuation = stripped.endswith('\\')
         if is_continuation:
-            stripped = stripped[:-1].rstrip()
+            # Shell semantics: backslash-newline is removed, whitespace
+            # before the backslash is kept as the token separator
+            stripped = stripped[:-1]
 
-        if stripped.startswith('#') or stripped.startswith('```') or not stripped:
+        if stripped.startswith('#') or stripped.startswith('```') or not stripped.strip():
             continue
 
-        if stripped.startswith('ffmpeg'):
+        # Capture VAR=value lines so we can expand $VAR ourselves —
+        # commands run without a shell, which would otherwise drop them
+        if not full_command:
+            m = _ASSIGNMENT_RE.match(stripped.strip())
+            if m:
+                variables[m.group(1)] = next(g for g in m.groups()[1:] if g is not None)
+                continue
+
+        if stripped.lstrip().startswith('ffmpeg'):
             if full_command:
                 extracted_commands.append(full_command.strip())
-            full_command = stripped + " "
+            full_command = stripped if is_continuation else stripped + " "
         elif full_command:
-            if is_continuation:
-                full_command += stripped
-            else:
-                full_command += stripped + " "
+            full_command += stripped if is_continuation else stripped + " "
 
     if full_command:
         extracted_commands.append(full_command.strip())
@@ -284,17 +307,21 @@ def parse_claude_commands(claude_text, input_path, output_path):
     output_path = output_path.replace('\\', '/')
 
     for cmd in extracted_commands:
+        # Expand captured shell variables (${VAR} and $VAR)
+        for name, value in variables.items():
+            cmd = re.sub(rf'\$\{{{name}\}}|\${name}\b', value, cmd)
+
         # Fix input file: replace the first -i argument (quoted or bare)
         if '{INPUT}' in cmd:
             cmd = cmd.replace('{INPUT}', input_path)
         else:
             cmd = re.sub(r'(-i\s+)("[^"]*"|\S+)', fr'\1"{input_path}"', cmd, count=1)
 
-        # Fix output file: the trailing video filename
+        # Fix output file: the trailing media filename
         if '{OUTPUT}' in cmd:
             cmd = cmd.replace('{OUTPUT}', output_path)
         else:
-            cmd = re.sub(r'(\s)\S+\.(?:mp4|mov|avi|mkv|webm)(\s*)$', fr'\1"{output_path}"\2', cmd)
+            cmd = re.sub(r'(\s)("[^"]*"|\S+)\.(?:mp4|mov|avi|mkv|webm|jpg|jpeg|png|webp)("?\s*)$', fr'\1"{output_path}"', cmd)
 
         # Fix font paths based on OS
         if platform.system() == 'Windows':

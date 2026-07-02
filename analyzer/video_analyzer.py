@@ -190,8 +190,8 @@ def analyze_video(video_path, task_id, processing_status):
                 analysis['suggestions'].append({
                     'type': 'trim',
                     'icon': '✂️',
-                    'title': 'Long Rest Period',
-                    'description': f'{q["duration"]}s rest at {format_time(q["start_time"])}',
+                    'title': 'Quiet Section',
+                    'description': f'{q["duration"]}s of low activity at {format_time(q["start_time"])}',
                     'fix': 'Trim or speed up this section'
                 })
 

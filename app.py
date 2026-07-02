@@ -258,9 +258,9 @@ def cancel_task(task_id):
 @app.route('/manifest.json')
 def manifest():
     return jsonify({
-        "name": "Workout Video Editor",
-        "short_name": "WorkoutEdit",
-        "description": "AI-powered workout video editor",
+        "name": "AI Media Editor",
+        "short_name": "MediaEdit",
+        "description": "AI-powered video and image editor",
         "start_url": "/",
         "display": "standalone",
         "background_color": "#0f0f1a",

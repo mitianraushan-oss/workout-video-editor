@@ -346,7 +346,7 @@ function displayAnalysis(analysis) {
     elements.statDuration.textContent = formatTime(analysis.duration);
     elements.statResolution.textContent = `${analysis.resolution.width}x${analysis.resolution.height}`;
     elements.statBrightness.textContent = Math.round(analysis.brightness);
-    elements.statReps.textContent = analysis.estimated_reps || '--';
+    elements.statReps.textContent = analysis.motion_segments.length || '--';
 
     // Timeline
     let timelineHTML = '';
@@ -372,7 +372,6 @@ function displayAnalysis(analysis) {
                     <div class="segment-time">${formatTime(seg.start_time)} - ${formatTime(seg.end_time)}</div>
                     <div class="segment-details">${seg.duration.toFixed(1)}s duration</div>
                 </div>
-                ${seg.estimated_reps ? `<div class="segment-reps">~${seg.estimated_reps} reps</div>` : ''}
             </div>
         `;
     });
