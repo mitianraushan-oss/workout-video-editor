@@ -370,7 +370,7 @@ def upload_file():
     if file.filename == '':
         return jsonify({'error': 'No file selected'}), 400
     
-      is_image = file.filename.lower().endswith(('.jpg', '.jpeg', '.png', '.webp'))
+    is_image = file.filename.lower().endswith(('.jpg', '.jpeg', '.png', '.webp'))
     
     if is_image:
         if not allowed_file(file.filename, 'image'):
