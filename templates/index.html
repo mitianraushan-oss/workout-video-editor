@@ -65,7 +65,7 @@
                     <div class="upload-icon">
                         <i class="fas fa-video"></i>
                     </div>
-                    <p class="upload-text">Drag & drop your video here</p>
+                    <p class="upload-text">Drag & drop your video or image here</p>
                     <p class="upload-subtext">or tap to browse</p>
                     <p class="upload-formats">MP4, MOV, AVI, MKV, JPG, PNG (max 500MB)</p>
                     <input type="file" id="videoInput" accept="video/*,image/*" hidden>
@@ -108,7 +108,7 @@
             <section id="analysisSection" class="section">
                 <h2 class="section-title">
                     <i class="fas fa-chart-bar"></i>
-                    Video Analysis
+                    <span id="analysisTitle">Video Analysis</span>
                 </h2>
 
                 <!-- Progress -->
@@ -123,7 +123,7 @@
                 <div id="analysisResults" class="hidden">
                     <!-- Stats Grid -->
                     <div class="stats-grid">
-                        <div class="stat-card">
+                        <div class="stat-card" id="statDurationCard">
                             <div class="stat-icon"><i class="fas fa-clock"></i></div>
                             <div class="stat-value" id="statDuration">--</div>
                             <div class="stat-label">Duration</div>
@@ -138,7 +138,7 @@
                             <div class="stat-value" id="statBrightness">--</div>
                             <div class="stat-label">Brightness</div>
                         </div>
-                        <div class="stat-card">
+                        <div class="stat-card" id="statRepsCard">
                             <div class="stat-icon"><i class="fas fa-running"></i></div>
                             <div class="stat-value" id="statReps">--</div>
                             <div class="stat-label">Est. Reps</div>
@@ -146,7 +146,7 @@
                     </div>
 
                     <!-- Motion Timeline -->
-                    <div class="card">
+                    <div class="card" id="timelineCard">
                         <h3 class="card-title">
                             <i class="fas fa-wave-square"></i>
                             Motion Timeline
@@ -155,7 +155,7 @@
                     </div>
 
                     <!-- Detected Segments -->
-                    <div class="card">
+                    <div class="card" id="segmentsCard">
                         <h3 class="card-title">
                             <i class="fas fa-cut"></i>
                             Exercise Segments

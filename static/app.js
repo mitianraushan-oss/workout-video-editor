@@ -2,6 +2,7 @@
 const state = {
     taskId: null,
     filename: null,
+    isImage: false,
     musicFilename: null,
     analysis: null,
     commands: null,
@@ -36,6 +37,11 @@ const elements = {
     musicInfo: document.getElementById('musicInfo'),
     analyzeBtn: document.getElementById('analyzeBtn'),
     analysisSection: document.getElementById('analysisSection'),
+    analysisTitle: document.getElementById('analysisTitle'),
+    statDurationCard: document.getElementById('statDurationCard'),
+    statRepsCard: document.getElementById('statRepsCard'),
+    timelineCard: document.getElementById('timelineCard'),
+    segmentsCard: document.getElementById('segmentsCard'),
     uploadSection: document.getElementById('uploadSection'),
     analysisProgress: document.getElementById('analysisProgress'),
     analysisResults: document.getElementById('analysisResults'),
@@ -180,6 +186,7 @@ function handleVideoFile(file) {
     elements.uploadZone.classList.add('hidden');
     elements.analyzeBtn.disabled = false;
     state.filename = file.name;
+    state.isImage = isImage;
 
     // Show video player for videos, hide it for images
     if (isImage) {
@@ -279,6 +286,10 @@ elements.analyzeBtn.addEventListener('click', async () => {
         return;
     }
 
+    const mediaWord = state.isImage ? 'Image' : 'Video';
+    elements.analysisTitle.textContent = `${mediaWord} Analysis`;
+    elements.analysisText.textContent = `Analyzing ${mediaWord.toLowerCase()}...`;
+
     showSection('analysisSection');
     updateSteps(2);
     elements.analysisProgress.classList.remove('hidden');
@@ -322,6 +333,13 @@ async function checkAnalysisStatus() {
 function displayAnalysis(analysis) {
     elements.analysisProgress.classList.add('hidden');
     elements.analysisResults.classList.remove('hidden');
+
+    // Images have no duration, reps, or motion data — hide those parts
+    const isImage = analysis.is_image || state.isImage;
+    elements.statDurationCard.classList.toggle('hidden', isImage);
+    elements.statRepsCard.classList.toggle('hidden', isImage);
+    elements.timelineCard.classList.toggle('hidden', isImage);
+    elements.segmentsCard.classList.toggle('hidden', isImage);
 
     // Stats
     elements.statDuration.textContent = formatTime(analysis.duration);
@@ -615,6 +633,7 @@ function resetApp() {
     // Clear state
     state.taskId = null;
     state.filename = null;
+    state.isImage = false;
     state.musicFilename = null;
     state.analysis = null;
     state.commands = null;
@@ -632,6 +651,11 @@ function resetApp() {
     // Reset UI
     showSection('uploadSection');
     updateSteps(1);
+    elements.analysisTitle.textContent = 'Video Analysis';
+    elements.statDurationCard.classList.remove('hidden');
+    elements.statRepsCard.classList.remove('hidden');
+    elements.timelineCard.classList.remove('hidden');
+    elements.segmentsCard.classList.remove('hidden');
     elements.previewContainer.classList.add('hidden');
     elements.uploadZone.classList.remove('hidden');
     elements.videoPreview.src = '';
