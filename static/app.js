@@ -67,6 +67,8 @@ const elements = {
     exportError: document.getElementById('exportError'),
     errorMessage: document.getElementById('errorMessage'),
     outputPreview: document.getElementById('outputPreview'),
+    outputPreviewImg: document.getElementById('outputPreviewImg'),
+    successTitle: document.getElementById('successTitle'),
     downloadBtn: document.getElementById('downloadBtn'),
     startOverBtn: document.getElementById('startOverBtn'),
     retryBtn: document.getElementById('retryBtn'),
@@ -159,7 +161,7 @@ elements.uploadZone.addEventListener('drop', (e) => {
 function handleVideoFile(file) {
     // Validate
     const validTypes = ['video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/x-matroska', 'video/webm', 'image/jpeg', 'image/png', 'image/webp'];
-    if (!validTypes.includes(file.type) && !file.name.match(/\.(mp4|mov|avi|mkv|webm|jpg|jpeg|png)$/i)) {
+    if (!validTypes.includes(file.type) && !file.name.match(/\.(mp4|mov|avi|mkv|webm|jpg|jpeg|png|webp)$/i)) {
         showToast('Invalid file format');
         return;
     }
@@ -446,7 +448,6 @@ elements.generateCmdBtn.addEventListener('click', async () => {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                analysis: state.analysis,
                 preferences: state.preferences,
                 task_id: state.taskId
             })
@@ -531,13 +532,12 @@ elements.processBtn.addEventListener('click', async () => {
     elements.exportError.classList.add('hidden');
 
     try {
+        // Server executes the commands it generated for this task;
+        // command strings from the client are not accepted.
         await fetch('/api/execute', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                task_id: state.taskId,
-                commands: state.commands
-            })
+            body: JSON.stringify({ task_id: state.taskId })
         });
 
         // Poll for processing status
@@ -565,10 +565,22 @@ async function checkProcessStatus() {
             clearInterval(state.statusInterval);
             elements.processProgress.classList.add('hidden');
             elements.exportComplete.classList.remove('hidden');
-            
-            // Load output preview
-            elements.outputPreview.src = `/api/download/${state.taskId}?preview=true`;
-            showToast('Video processed successfully!');
+
+            // Load output preview (image or video)
+            const previewUrl = `/api/download/${state.taskId}?preview=true`;
+            const isImage = /\.(jpg|jpeg|png|webp)$/i.test(state.filename || '');
+            if (isImage) {
+                elements.successTitle.textContent = 'Image Ready!';
+                elements.outputPreview.classList.add('hidden');
+                elements.outputPreviewImg.classList.remove('hidden');
+                elements.outputPreviewImg.src = previewUrl;
+            } else {
+                elements.successTitle.textContent = 'Video Ready!';
+                elements.outputPreviewImg.classList.add('hidden');
+                elements.outputPreview.classList.remove('hidden');
+                elements.outputPreview.src = previewUrl;
+            }
+            showToast('Processing complete!');
         } else if (data.status === 'error') {
             clearInterval(state.statusInterval);
             elements.processProgress.classList.add('hidden');

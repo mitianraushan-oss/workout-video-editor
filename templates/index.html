@@ -369,16 +369,17 @@
                     <div class="success-animation">
                         <i class="fas fa-check-circle"></i>
                     </div>
-                    <h3 class="success-title">Video Ready!</h3>
-                    <p class="success-text">Your workout video has been processed successfully</p>
-                    
+                    <h3 class="success-title" id="successTitle">Video Ready!</h3>
+                    <p class="success-text">Your workout media has been processed successfully</p>
+
                     <div class="export-preview">
                         <video id="outputPreview" controls></video>
+                        <img id="outputPreviewImg" class="hidden" alt="Edited image preview" style="max-width:100%;border-radius:12px;">
                     </div>
 
                     <button id="downloadBtn" class="btn btn-primary btn-full btn-lg">
                         <i class="fas fa-download"></i>
-                        Download Video
+                        Download
                     </button>
 
                     <button id="startOverBtn" class="btn btn-secondary btn-full">
