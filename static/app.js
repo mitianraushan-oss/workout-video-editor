@@ -155,30 +155,22 @@ elements.uploadZone.addEventListener('drop', (e) => {
     }
 });
 
-// Handle video file
+// Handle video/image file
 function handleVideoFile(file) {
-       // Validate
+    // Validate
     const validTypes = ['video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/x-matroska', 'video/webm', 'image/jpeg', 'image/png', 'image/webp'];
     if (!validTypes.includes(file.type) && !file.name.match(/\.(mp4|mov|avi|mkv|webm|jpg|jpeg|png)$/i)) {
         showToast('Invalid file format');
         return;
     }
-    
-    // Show preview for images or videos
-    const url = URL.createObjectURL(file);
-    const isImage = file.type.startsWith('image/');
 
-       // Show preview (Handle both Video and Image)
+    // Check if it's an image
+    const isImage = file.type.startsWith('image/');
     const url = URL.createObjectURL(file);
-    if (isImage) {
-        elements.videoPreview.style.display = 'none'; // Hide video player
-        // If you want to show the image, you could add an <img> tag, but leaving it hidden is fine for now!
-    } else {
-        elements.videoPreview.style.display = 'block';
-        elements.videoPreview.src = url;
-    }
+    
+    // Update the UI to show the file name
     elements.fileInfo.innerHTML = `
-        <i class="fas fa-video"></i>
+        <i class="fas ${isImage ? 'fa-image' : 'fa-video'}"></i>
         <span>${file.name}</span>
         <span class="file-size">${formatFileSize(file.size)}</span>
     `;
@@ -186,6 +178,14 @@ function handleVideoFile(file) {
     elements.uploadZone.classList.add('hidden');
     elements.analyzeBtn.disabled = false;
     state.filename = file.name;
+
+    // Show video player for videos, hide it for images
+    if (isImage) {
+        elements.videoPreview.style.display = 'none';
+    } else {
+        elements.videoPreview.style.display = 'block';
+        elements.videoPreview.src = url;
+    }
 
     // Upload to server
     uploadFile(file);
