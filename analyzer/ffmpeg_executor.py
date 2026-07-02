@@ -76,6 +76,24 @@ def run_ffmpeg_pipeline(commands, task_id, input_file, output_file, processing_s
         processing_status[task_id]['error'] = str(e)
 
 
+# Output sizes per resolution choice; 'original' skips the resize step entirely
+RESOLUTIONS = {
+    'portrait': {'1080p': (1080, 1920), '4k': (2160, 3840)},
+    'landscape': {'1080p': (1920, 1080), '4k': (3840, 2160)},
+}
+RESOLUTION_LABELS = {'1080p': '1080p', '4k': '4K'}
+
+
+def _output_size(preferences, orientation):
+    """Return (width, height, label) for the chosen resolution, or None for 'original'."""
+    resolution = preferences.get('resolution', '1080p')
+    sizes = RESOLUTIONS[orientation]
+    if resolution not in sizes:
+        return None
+    w, h = sizes[resolution]
+    return w, h, RESOLUTION_LABELS[resolution]
+
+
 def build_image_commands(analysis, preferences):
     """Build the auto-edit pipeline for a still image (no audio/fade/video codecs)."""
     commands = []
@@ -106,17 +124,23 @@ def build_image_commands(analysis, preferences):
 
     # Resize/pad for platform (scale+pad is safe for any orientation)
     if platform_choice in ['instagram-reels', 'tiktok']:
-        commands.append({
-            'name': 'Fit to 9:16',
-            'icon': '📐',
-            'command': 'ffmpeg -i "{INPUT}" -vf "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2" "{OUTPUT}"'
-        })
+        size = _output_size(preferences, 'portrait')
+        if size:
+            w, h, label = size
+            commands.append({
+                'name': f'Fit to 9:16 ({label})',
+                'icon': '📐',
+                'command': f'ffmpeg -i "{{INPUT}}" -vf "scale={w}:{h}:force_original_aspect_ratio=decrease:flags=lanczos,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2" "{{OUTPUT}}"'
+            })
     elif platform_choice == 'youtube':
-        commands.append({
-            'name': 'Fit to 16:9',
-            'icon': '📐',
-            'command': 'ffmpeg -i "{INPUT}" -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2" "{OUTPUT}"'
-        })
+        size = _output_size(preferences, 'landscape')
+        if size:
+            w, h, label = size
+            commands.append({
+                'name': f'Fit to 16:9 ({label})',
+                'icon': '📐',
+                'command': f'ffmpeg -i "{{INPUT}}" -vf "scale={w}:{h}:force_original_aspect_ratio=decrease:flags=lanczos,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2" "{{OUTPUT}}"'
+            })
 
     # Workout label overlay
     if preferences.get('add_text', True):
@@ -161,19 +185,25 @@ def build_commands(analysis, preferences, music_path):
             'command': 'ffmpeg -i "{INPUT}" -vf "eq=brightness=-0.1" -c:a copy "{OUTPUT}"'
         })
 
-    # Crop for platform
+    # Crop/scale for platform
     if platform_choice in ['instagram-reels', 'tiktok']:
-        commands.append({
-            'name': 'Crop to 9:16',
-            'icon': '📐',
-            'command': 'ffmpeg -i "{INPUT}" -vf "crop=ih*9/16:ih,scale=1080:1920,pad=1080:1920:(ow-iw)/2:(oh-ih)/2" -c:a copy "{OUTPUT}"'
-        })
+        size = _output_size(preferences, 'portrait')
+        if size:
+            w, h, label = size
+            commands.append({
+                'name': f'Crop to 9:16 ({label})',
+                'icon': '📐',
+                'command': f'ffmpeg -i "{{INPUT}}" -vf "crop=ih*9/16:ih,scale={w}:{h}:flags=lanczos,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2" -c:a copy "{{OUTPUT}}"'
+            })
     elif platform_choice == 'youtube':
-        commands.append({
-            'name': 'Scale to 1080p',
-            'icon': '📐',
-            'command': 'ffmpeg -i "{INPUT}" -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2" -c:a copy "{OUTPUT}"'
-        })
+        size = _output_size(preferences, 'landscape')
+        if size:
+            w, h, label = size
+            commands.append({
+                'name': f'Scale to {label}',
+                'icon': '📐',
+                'command': f'ffmpeg -i "{{INPUT}}" -vf "scale={w}:{h}:force_original_aspect_ratio=decrease:flags=lanczos,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2" -c:a copy "{{OUTPUT}}"'
+            })
 
     # Add text overlays
     workout_type = preferences.get('workout_type', '').upper() or 'EXERCISE'

@@ -10,6 +10,7 @@ const state = {
         workout_type: '',
         mood: 'energetic',
         platform: 'instagram-reels',
+        resolution: '1080p',
         add_music: false,
         music_volume: 15,
         add_text: true,
@@ -420,6 +421,8 @@ document.querySelectorAll('.pill-selector').forEach(selector => {
                 }
             } else if (id === 'moodType') {
                 state.preferences.mood = value;
+            } else if (id === 'resolutionType') {
+                state.preferences.resolution = value;
             }
         });
     });
@@ -641,6 +644,7 @@ function resetApp() {
         workout_type: '',
         mood: 'energetic',
         platform: 'instagram-reels',
+        resolution: '1080p',
         add_music: false,
         music_volume: 15,
         add_text: true,
@@ -680,6 +684,7 @@ function resetApp() {
     document.querySelectorAll('.pill.active').forEach(p => p.classList.remove('active'));
     document.querySelectorAll('.platform-btn.active').forEach(p => p.classList.remove('active'));
     document.querySelector('.pill[data-value="energetic"]')?.classList.add('active');
+    document.querySelector('#resolutionType .pill[data-value="1080p"]')?.classList.add('active');
     document.querySelector('.platform-btn[data-value="instagram-reels"]')?.classList.add('active');
     elements.musicVolume.value = 15;
     elements.volumeValue.textContent = '15%';
