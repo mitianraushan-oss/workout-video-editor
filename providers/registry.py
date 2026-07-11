@@ -46,6 +46,7 @@ class Provider:
             'name': self.name,
             'id': self.id,
             'types': self.types,
+            'auth_type': self.auth_type,
             'free_tier_type': self.free_tier_type,
             'free_tier_limit': self.free_tier_limit,
             'cost_per_unit_usd': self.cost_per_unit_usd,
