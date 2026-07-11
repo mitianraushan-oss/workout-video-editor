@@ -1,9 +1,10 @@
 # Use a stable, supported Python version
 FROM python:3.11-slim
 
-# Install FFmpeg directly from Linux package manager
+# FFmpeg for processing; Noto fonts so burned-in captions render in
+# non-Latin scripts (Hindi, CJK, Arabic) instead of empty boxes
 RUN apt-get update && \
-    apt-get install -y ffmpeg && \
+    apt-get install -y ffmpeg fonts-noto-core fonts-noto-cjk && \
     apt-get clean
 
 # Set the working directory inside the container

@@ -11,3 +11,9 @@ env/
 
 # OS
 .DS_Store
+
+# Secrets
+.env
+
+# Provider usage counters (runtime state, not config)
+config/usage_state.json

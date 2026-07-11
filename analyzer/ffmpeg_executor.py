@@ -10,80 +10,134 @@ import platform
 import re
 import shlex
 import subprocess
+import time
 
 
-def run_ffmpeg_pipeline(commands, task_id, input_file, output_file, processing_status):
-    """Run a list of command dicts as a pipeline, chaining outputs to inputs."""
+def _run_pipeline(commands, input_file, output_file, deadline=None, on_progress=None):
+    """Run a list of command dicts as a pipeline, chaining outputs to inputs.
+
+    Returns (success, output_file_or_None, error_or_None). `deadline`, if given,
+    is a time.monotonic() timestamp each ffmpeg step's remaining budget is computed
+    against, so a multi-step pipeline can't blow past an overall wall-clock limit.
+    """
+    output_dir = os.path.dirname(output_file) or '.'
+    output_name = os.path.basename(output_file)
+    os.makedirs(output_dir, exist_ok=True)
+
+    current_input = input_file
+    temp_outputs = []
+
+    def cleanup_temps():
+        for t in temp_outputs:
+            if os.path.exists(t):
+                os.remove(t)
+
+    for i, cmd_info in enumerate(commands):
+        if on_progress:
+            on_progress(i, len(commands), cmd_info.get('name', f'Step {i+1}'))
+
+        cmd = cmd_info['command']
+        cmd = cmd.replace('{INPUT}', current_input)
+
+        if i == len(commands) - 1:
+            step_output = output_file
+        else:
+            step_output = os.path.join(output_dir, f'temp_{i}_{output_name}')
+            temp_outputs.append(step_output)
+        cmd = cmd.replace('{OUTPUT}', step_output)
+
+        args = shlex.split(cmd)
+        if not args or os.path.basename(args[0]) != 'ffmpeg':
+            cleanup_temps()
+            return False, None, 'Refused: only ffmpeg commands can be executed'
+        if '-y' not in args:
+            args.insert(1, '-y')
+
+        step_timeout = None
+        if deadline is not None:
+            step_timeout = deadline - time.monotonic()
+            if step_timeout <= 0:
+                cleanup_temps()
+                return False, None, 'Cycle timed out before this ffmpeg step could run'
+
+        try:
+            result = subprocess.run(args, capture_output=True, text=True, timeout=step_timeout)
+        except subprocess.TimeoutExpired:
+            cleanup_temps()
+            return False, None, 'ffmpeg command exceeded the cycle time budget'
+
+        if result.returncode != 0:
+            cleanup_temps()
+            # Last 500 chars of stderr hold the actual error, not the banner
+            return False, None, result.stderr[-500:]
+
+        if i < len(commands) - 1 and os.path.exists(step_output):
+            current_input = step_output
+
+    cleanup_temps()
+
+    # Never report success unless the expected output actually exists —
+    # a command may have written somewhere we failed to redirect
+    if not os.path.exists(output_file):
+        return False, None, (
+            'Processing finished but no output file was produced at the '
+            'expected location. Check that the command writes to {OUTPUT}.'
+        )
+
+    return True, output_file, None
+
+
+def _is_valid_image(path):
+    import cv2
+    img = cv2.imread(path)
+    return img is not None and img.size > 0
+
+
+def run_ffmpeg_pipeline(commands, task_id, input_file, output_file, processing_status,
+                        expect_image=False):
+    """Run a pipeline and report progress/result into processing_status[task_id]."""
     try:
         processing_status[task_id]['status'] = 'processing'
         processing_status[task_id]['progress'] = 0
 
-        output_dir = os.path.dirname(output_file) or '.'
-        output_name = os.path.basename(output_file)
-        os.makedirs(output_dir, exist_ok=True)
+        def on_progress(i, total, name):
+            processing_status[task_id]['current_step'] = name
+            processing_status[task_id]['progress'] = (i / total) * 100
 
-        current_input = input_file
-        temp_outputs = []
+        ok, out, err = _run_pipeline(commands, input_file, output_file, on_progress=on_progress)
 
-        def cleanup_temps():
-            for t in temp_outputs:
-                if os.path.exists(t):
-                    os.remove(t)
+        if not ok:
+            processing_status[task_id]['status'] = 'error'
+            processing_status[task_id]['error'] = err
+            return
 
-        for i, cmd_info in enumerate(commands):
-            processing_status[task_id]['current_step'] = cmd_info.get('name', f'Step {i+1}')
-            processing_status[task_id]['progress'] = (i / len(commands)) * 100
-
-            cmd = cmd_info['command']
-            cmd = cmd.replace('{INPUT}', current_input)
-
-            if i == len(commands) - 1:
-                step_output = output_file
-            else:
-                step_output = os.path.join(output_dir, f'temp_{i}_{output_name}')
-                temp_outputs.append(step_output)
-            cmd = cmd.replace('{OUTPUT}', step_output)
-
-            args = shlex.split(cmd)
-            if not args or os.path.basename(args[0]) != 'ffmpeg':
-                processing_status[task_id]['status'] = 'error'
-                processing_status[task_id]['error'] = 'Refused: only ffmpeg commands can be executed'
-                cleanup_temps()
-                return
-            if '-y' not in args:
-                args.insert(1, '-y')
-
-            result = subprocess.run(args, capture_output=True, text=True)
-
-            if result.returncode != 0:
-                processing_status[task_id]['status'] = 'error'
-                # Last 500 chars of stderr hold the actual error, not the banner
-                processing_status[task_id]['error'] = result.stderr[-500:]
-                cleanup_temps()
-                return
-
-            if i < len(commands) - 1 and os.path.exists(step_output):
-                current_input = step_output
-
-        cleanup_temps()
-
-        # Never report success unless the expected output actually exists —
-        # a command may have written somewhere we failed to redirect
-        if not os.path.exists(output_file):
+        # A command can "succeed" while writing the wrong kind of data — e.g. a
+        # video codec forced into a .jpeg output produces a file no viewer can
+        # open. Fail loudly instead of serving it.
+        if expect_image and not _is_valid_image(out):
             processing_status[task_id]['status'] = 'error'
             processing_status[task_id]['error'] = (
-                'Processing finished but no output file was produced at the '
-                'expected location. Check that the command writes to {OUTPUT}.'
+                'The output is not a valid image — the command likely used video '
+                'encoding settings (e.g. libx264). Regenerate the commands as '
+                'image-only edits and try again.'
             )
             return
 
         processing_status[task_id]['status'] = 'completed'
         processing_status[task_id]['progress'] = 100
-        processing_status[task_id]['output_file'] = output_file
+        processing_status[task_id]['output_file'] = out
 
     except Exception as e:
         processing_status[task_id]['status'] = 'error'
         processing_status[task_id]['error'] = str(e)
+
+
+def run_ffmpeg_commands(commands, input_file, output_file, timeout_seconds=None):
+    """Run a pipeline synchronously and return a result dict — no processing_status
+    coupling, for callers (like the Fable loop) that just need a pass/fail result."""
+    deadline = time.monotonic() + timeout_seconds if timeout_seconds is not None else None
+    ok, out, err = _run_pipeline(commands, input_file, output_file, deadline=deadline)
+    return {'success': ok, 'output_file': out, 'error': err}
 
 
 # Output sizes per resolution choice; 'original' skips the resize step entirely
@@ -307,9 +361,10 @@ def parse_claude_commands(claude_text, input_path, output_path):
     output_path = output_path.replace('\\', '/')
 
     for cmd in extracted_commands:
-        # Expand captured shell variables (${VAR} and $VAR)
+        # Expand captured shell variables (${VAR} and $VAR); lambda keeps
+        # backslashes in the value from being read as regex escapes
         for name, value in variables.items():
-            cmd = re.sub(rf'\$\{{{name}\}}|\${name}\b', value, cmd)
+            cmd = re.sub(rf'\$\{{{name}\}}|\${name}\b', lambda m: value, cmd)
 
         # Fix input file: replace the first -i argument (quoted or bare)
         if '{INPUT}' in cmd:

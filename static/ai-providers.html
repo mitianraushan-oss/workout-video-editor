@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Provider Selector</title>
+  <style>
+    :root { --bg:#0f0f1a; --card:#1a1a2e; --card2:#22223a; --accent:#6c5ce7;
+            --accent2:#a29bfe; --text:#e8e8f0; --muted:#9a9ab0; --ok:#00b894;
+            --warn:#fdcb6e; --err:#ff7675; --line:#2d2d44; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--text);
+           font-family:'Inter',system-ui,-apple-system,sans-serif; padding:24px; }
+    .wrap { max-width:860px; margin:0 auto; }
+    h1 { font-size:22px; margin:0 0 4px; }
+    .sub { color:var(--muted); font-size:13px; margin:0 0 20px; }
+    .badge { display:inline-block; font-size:11px; font-weight:600; padding:2px 8px;
+             border-radius:20px; margin-left:8px; vertical-align:middle; }
+    .badge.dry { background:rgba(253,203,110,.15); color:var(--warn); border:1px solid var(--warn); }
+    .badge.live { background:rgba(0,184,148,.15); color:var(--ok); border:1px solid var(--ok); }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:14px;
+            padding:18px; margin-bottom:16px; }
+    label { display:block; font-size:12px; color:var(--muted); margin:0 0 6px; font-weight:600;
+            text-transform:uppercase; letter-spacing:.04em; }
+    select, textarea, input { width:100%; background:var(--card2); color:var(--text);
+            border:1px solid var(--line); border-radius:10px; padding:11px 12px; font-size:14px;
+            font-family:inherit; }
+    textarea { resize:vertical; min-height:70px; }
+    .row { display:flex; gap:12px; flex-wrap:wrap; }
+    .row > div { flex:1; min-width:180px; }
+    .tasks { display:flex; gap:8px; flex-wrap:wrap; }
+    .task { flex:1; min-width:90px; text-align:center; padding:9px; border-radius:10px;
+            border:1px solid var(--line); background:var(--card2); cursor:pointer; font-size:13px;
+            user-select:none; }
+    .task.on { border-color:var(--accent); background:rgba(108,92,231,.18); color:var(--accent2); }
+    button.gen { width:100%; margin-top:16px; background:var(--accent); color:#fff; border:none;
+            border-radius:10px; padding:13px; font-size:15px; font-weight:600; cursor:pointer; }
+    button.gen:disabled { background:#3a3a55; color:var(--muted); cursor:not-allowed; }
+    .prov { display:flex; align-items:center; justify-content:space-between; padding:10px 12px;
+            border:1px solid var(--line); border-radius:10px; margin-bottom:8px; background:var(--card2); }
+    .prov.off { opacity:.5; }
+    .prov .meta { font-size:12px; color:var(--muted); }
+    .bar { height:6px; background:var(--line); border-radius:4px; overflow:hidden; margin-top:5px; width:160px; }
+    .bar > i { display:block; height:100%; background:var(--accent); }
+    .dot { width:8px; height:8px; border-radius:50%; display:inline-block; margin-right:6px; }
+    .dot.ok { background:var(--ok); } .dot.no { background:var(--err); }
+    .out { white-space:pre-wrap; font-family:ui-monospace,monospace; font-size:12.5px;
+           background:#0c0c16; border:1px solid var(--line); border-radius:10px; padding:12px;
+           color:var(--accent2); max-height:220px; overflow:auto; }
+    .err { color:var(--err); } .muted { color:var(--muted); font-size:12px; }
+    .spin { display:inline-block; width:14px; height:14px; border:2px solid rgba(255,255,255,.3);
+            border-top-color:#fff; border-radius:50%; animation:s .7s linear infinite; vertical-align:-2px; }
+    @keyframes s { to { transform:rotate(360deg); } }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1>AI Provider Selector <span id="mode" class="badge dry">dry-run</span></h1>
+  <p class="sub">Unified image/video generation across providers. Free tier is preferred automatically; budgets update live.</p>
+
+  <div class="card">
+    <label>Task type</label>
+    <div class="tasks" id="tasks">
+      <div class="task on" data-t="image-gen">Image</div>
+      <div class="task" data-t="video-gen">Video</div>
+      <div class="task" data-t="image-edit">Image edit</div>
+      <div class="task" data-t="upscale">Upscale</div>
+    </div>
+
+    <div class="row" style="margin-top:14px">
+      <div>
+        <label>Provider</label>
+        <select id="provider"><option value="">Auto — best available (free first)</option></select>
+      </div>
+    </div>
+
+    <div style="margin-top:14px">
+      <label>Prompt</label>
+      <textarea id="prompt" placeholder="e.g. a neon-lit gym poster, cinematic lighting"></textarea>
+    </div>
+
+    <button class="gen" id="gen">Generate</button>
+    <p id="hint" class="muted" style="margin:10px 0 0"></p>
+  </div>
+
+  <div class="card">
+    <label>Provider budgets</label>
+    <div id="providers"><p class="muted">Loading…</p></div>
+  </div>
+
+  <div class="card">
+    <label>Result</label>
+    <div class="out" id="result">No request yet.</div>
+  </div>
+</div>
+
+<script>
+const API = '/api/ai';
+let TASK = 'image-gen';
+
+function pct(b) {
+  if (!b || b.limit == null || !b.limit) return 0;
+  return Math.max(0, Math.min(100, 100 * (b.remaining ?? 0) / b.limit));
+}
+
+async function loadStatus() {
+  const r = await fetch(`${API}/status`);
+  const data = await r.json();
+  document.getElementById('mode').className = 'badge ' + (data.dry_run ? 'dry' : 'live');
+  document.getElementById('mode').textContent = data.dry_run ? 'dry-run' : 'live';
+
+  // provider dropdown: only ones that support the current task AND are available
+  const sel = document.getElementById('provider');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">Auto — best available (free first)</option>';
+  for (const p of data.providers) {
+    if (!p.types.includes(TASK)) continue;
+    const o = document.createElement('option');
+    o.value = p.id;
+    o.disabled = !p.available;
+    o.textContent = `${p.name}${p.available ? '' : ' — ' + (p.unavailable_reason || 'unavailable')}`;
+    sel.appendChild(o);
+  }
+  sel.value = cur;
+
+  // budget list
+  const box = document.getElementById('providers');
+  box.innerHTML = '';
+  for (const p of data.providers) {
+    const b = p.budget || {};
+    const el = document.createElement('div');
+    el.className = 'prov' + (p.available ? '' : ' off');
+    const limitTxt = b.limit == null ? 'no cap' : `${b.remaining}/${b.limit} left`;
+    const resets = b.resets_at ? ` · resets ${new Date(b.resets_at).toLocaleString()}` : '';
+    el.innerHTML = `
+      <div>
+        <div><span class="dot ${p.available ? 'ok' : 'no'}"></span><b>${p.name}</b>
+             <span class="meta"> · ${p.types.join(', ')}</span></div>
+        <div class="meta">${b.kind || ''} · ${limitTxt}${p.available ? '' : ' · ' + (p.unavailable_reason || '')}</div>
+        <div class="bar"><i style="width:${pct(b)}%"></i></div>
+      </div>
+      <div class="meta">${b.kind === 'free-rate-limited' && b.per_minute
+          ? `${b.per_minute.current}/${b.per_minute.limit} per min` : ''}</div>`;
+    box.appendChild(el);
+  }
+  updateHint(data);
+}
+
+function updateHint(data) {
+  const sel = document.getElementById('provider').value;
+  const gen = document.getElementById('gen');
+  const hint = document.getElementById('hint');
+  const usable = data.providers.filter(p => p.types.includes(TASK) && p.available);
+  if (!usable.length) {
+    gen.disabled = true;
+    hint.innerHTML = `<span class="err">No provider available for ${TASK}. Add an API key or try again tomorrow.</span>`;
+  } else {
+    gen.disabled = false;
+    hint.textContent = sel ? '' : `Auto will use "${usable[0].name}" (free tier preferred).`;
+  }
+}
+
+document.getElementById('tasks').addEventListener('click', e => {
+  const t = e.target.closest('.task'); if (!t) return;
+  document.querySelectorAll('.task').forEach(x => x.classList.remove('on'));
+  t.classList.add('on'); TASK = t.dataset.t; loadStatus();
+});
+document.getElementById('provider').addEventListener('change', () => loadStatus());
+
+document.getElementById('gen').addEventListener('click', async () => {
+  const gen = document.getElementById('gen');
+  const out = document.getElementById('result');
+  const prompt = document.getElementById('prompt').value.trim();
+  if (!prompt) { out.innerHTML = '<span class="err">Enter a prompt first.</span>'; return; }
+
+  const media = TASK.startsWith('video') ? 'video' : 'image';
+  const provider = document.getElementById('provider').value;
+  gen.disabled = true; gen.innerHTML = '<span class="spin"></span> Generating…';
+  out.textContent = 'Requesting…';
+  try {
+    const r = await fetch(`${API}/generate/${media}`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ provider, prompt })
+    });
+    const data = await r.json();
+    if (!r.ok) {
+      out.innerHTML = `<span class="err">${data.error || 'Request failed'}</span>` +
+        (r.status === 409 ? '\n\nTip: switch provider or try again after the reset.' : '');
+    } else {
+      out.textContent = JSON.stringify(data, null, 2);
+    }
+  } catch (e) {
+    out.innerHTML = `<span class="err">Network error: ${e.message}</span>`;
+  } finally {
+    gen.innerHTML = 'Generate';
+    await loadStatus();  // refresh budgets after the spend
+  }
+});
+
+loadStatus();
+</script>
+</body>
+</html>

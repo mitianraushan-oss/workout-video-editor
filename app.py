@@ -4,14 +4,22 @@ import shutil
 import threading
 import time
 import uuid
+from dotenv import load_dotenv
 from werkzeug.utils import secure_filename
+
+load_dotenv()
 
 from analyzer.video_analyzer import analyze_video
 from analyzer.image_analyzer import WorkoutImageAnalyzer
 from analyzer.prompt_generator import generate_claude_prompt
+from analyzer.captioner import generate_captions
 from analyzer.ffmpeg_executor import build_commands, parse_claude_commands, run_ffmpeg_pipeline
+from fable_loop import memory as fable_memory
+from fable_loop.orchestrator import LoopConfig, run_loop
+from providers.routes import ai_bp
 
 app = Flask(__name__)
+app.register_blueprint(ai_bp)
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['OUTPUT_FOLDER'] = 'outputs'
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB
@@ -69,6 +77,16 @@ def is_image_file(filename):
 
 def output_path_for(task_id, task):
     return os.path.join(app.config['OUTPUT_FOLDER'], task_id, f"edited_{task['filename']}")
+
+
+def _fable_paths(task_id):
+    task_dir = os.path.join(app.config['OUTPUT_FOLDER'], task_id)
+    return (
+        task_dir,
+        os.path.join(task_dir, 'fable_state.json'),
+        os.path.join(task_dir, 'fable_memory.md'),
+        os.path.join(task_dir, 'fable_control.json'),
+    )
 
 
 # ============= ROUTES =============
@@ -224,7 +242,8 @@ def execute_commands():
 
     thread = threading.Thread(
         target=run_ffmpeg_pipeline,
-        args=(commands, task_id, task['filepath'], output_path_for(task_id, task), processing_status)
+        args=(commands, task_id, task['filepath'], output_path_for(task_id, task), processing_status),
+        kwargs={'expect_image': is_image_file(task['filename'])}
     )
     thread.start()
 
@@ -302,11 +321,145 @@ def run_claude_commands():
 
     thread = threading.Thread(
         target=run_ffmpeg_pipeline,
-        args=(final_commands, task_id, task['filepath'], output_file, processing_status)
+        args=(final_commands, task_id, task['filepath'], output_file, processing_status),
+        kwargs={'expect_image': is_image_file(task['filename'])}
     )
     thread.start()
 
     return jsonify({'message': f'Executing {len(final_commands)} Claude command(s) with fixed paths'})
+
+
+@app.route('/api/captions/<task_id>', methods=['POST'])
+def start_captions(task_id):
+    """Transcribe the video's speech via OpenAI and burn subtitles in.
+    Reuses the standard status/download flow: poll /api/status/<task_id>,
+    then download the captioned video from /api/download/<task_id>."""
+    task = processing_status.get(task_id)
+    if not task:
+        return jsonify({'error': 'Task not found'}), 404
+    if is_image_file(task['filename']):
+        return jsonify({'error': 'Captions only work on videos'}), 400
+
+    openai_key = os.environ.get('OPENAI_API_KEY')
+    if not openai_key:
+        return jsonify({'error': 'OPENAI_API_KEY is not configured on the server'}), 500
+
+    # 'auto' (or absent) keeps the spoken language; otherwise translate to it.
+    language = ((request.json or {}).get('language') or 'auto').strip()
+    if len(language) > 30 or not language.replace(' ', '').isalpha():
+        return jsonify({'error': 'Invalid language'}), 400
+
+    output_dir = os.path.join(app.config['OUTPUT_FOLDER'], task_id)
+    output_file = os.path.join(output_dir, f"captioned_{task['filename']}")
+
+    thread = threading.Thread(
+        target=generate_captions,
+        args=(task['filepath'], output_file, task_id, processing_status, openai_key),
+        kwargs={'language': language}
+    )
+    thread.start()
+
+    return jsonify({'message': 'Caption generation started'})
+
+
+@app.route('/api/edit-video', methods=['POST'])
+def start_fable_loop():
+    """Kick off the autonomous edit loop (OpenAI-planned) for an already-analyzed task."""
+    data = request.json or {}
+    task_id = data.get('task_id')
+    goal = (data.get('goal') or '').strip()
+
+    task = processing_status.get(task_id)
+    if not task:
+        return jsonify({'error': 'Task not found'}), 404
+    if not goal:
+        return jsonify({'error': 'goal is required'}), 400
+    if not task.get('analysis'):
+        return jsonify({'error': 'Analyze the file first (POST /api/analyze/<task_id>)'}), 400
+    if task.get('fable_loop_active'):
+        return jsonify({'error': 'A Fable loop is already running for this task'}), 409
+
+    openai_key = os.environ.get('OPENAI_API_KEY')
+    if not openai_key:
+        return jsonify({'error': 'OPENAI_API_KEY is not configured on the server'}), 500
+
+    task_dir, _, _, _ = _fable_paths(task_id)
+    os.makedirs(task_dir, exist_ok=True)
+
+    config = LoopConfig(
+        max_cycles=int(data.get('max_cycles', 20)),
+        cycle_timeout_seconds=int(data.get('cycle_timeout_seconds', 1800)),
+        max_repeat=int(data.get('max_repeat', 3)),
+        budget_usd=float(data.get('budget_usd', 2.0)),
+    )
+
+    task['fable_loop_active'] = True
+
+    def _run():
+        try:
+            run_loop(
+                task_dir=task_dir,
+                task_id=task_id,
+                input_file=task['filepath'],
+                goal=goal,
+                analysis=task['analysis'],
+                is_image=is_image_file(task['filename']),
+                openai_api_key=openai_key,
+                config=config,
+            )
+        finally:
+            task['fable_loop_active'] = False
+
+    thread = threading.Thread(target=_run)
+    thread.start()
+
+    return jsonify({'message': 'Fable loop started', 'task_id': task_id})
+
+
+@app.route('/api/edit-video/status/<task_id>')
+def fable_loop_status(task_id):
+    _, state_path, memory_path, _ = _fable_paths(task_id)
+    state = fable_memory.load_state(state_path)
+    if not state:
+        return jsonify({'error': 'No Fable loop found for this task'}), 404
+
+    memory_tail = ''
+    if os.path.exists(memory_path):
+        with open(memory_path) as f:
+            memory_tail = f.read()[-4000:]
+
+    return jsonify({
+        'status': state.get('status'),
+        'cycle': state.get('cycle'),
+        'stop_reason': state.get('stop_reason'),
+        'cumulative_cost_usd': state.get('cumulative_cost_usd'),
+        'cumulative_input_tokens': state.get('cumulative_input_tokens'),
+        'cumulative_output_tokens': state.get('cumulative_output_tokens'),
+        'history_summaries': state.get('history_summaries', [])[-10:],
+        'current_output': state.get('current_input'),
+        'memory_tail': memory_tail,
+    })
+
+
+@app.route('/api/edit-video/stop/<task_id>', methods=['POST'])
+def fable_loop_stop(task_id):
+    _, state_path, _, control_path = _fable_paths(task_id)
+    if not os.path.exists(state_path):
+        return jsonify({'error': 'No Fable loop found for this task'}), 404
+    fable_memory.write_control(control_path, {'stop_requested': True})
+    return jsonify({'message': 'Stop requested; loop will halt after the current cycle'})
+
+
+@app.route('/api/edit-video/download/<task_id>')
+def fable_loop_download(task_id):
+    _, state_path, _, _ = _fable_paths(task_id)
+    state = fable_memory.load_state(state_path)
+    output_file = state.get('current_input') if state else None
+    if not output_file or not os.path.exists(output_file):
+        return jsonify({'error': 'Output not available yet'}), 404
+
+    as_attachment = request.args.get('preview') != 'true'
+    return send_file(os.path.abspath(output_file), as_attachment=as_attachment)
 
 
 if __name__ == '__main__':

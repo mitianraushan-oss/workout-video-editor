@@ -1,0 +1,113 @@
+{
+  "_comment": "Provider registry for the multi-provider AI generation layer. Numbers here (free_tier_limit, cost_per_unit, endpoints, rate limits) are CONFIG, not verified facts — correct them per each provider's real API docs before flipping dry_run off. See providers/service.py.",
+  "_schema": {
+    "name": "human-readable provider name",
+    "id": "stable lowercase key, matches api_key_env prefix",
+    "types": "list of: image-gen | video-gen | image-edit | video-edit | upscale | 3d-gen",
+    "auth_type": "api-key | none",
+    "api_key_env": "env var holding the credential (null when auth_type=none)",
+    "free_tier_type": "daily-credits | one-time-credits | free-rate-limited | paid-only",
+    "free_tier_limit": "units for daily/one-time; {per_minute,per_day} for free-rate-limited; null for paid-only",
+    "cost_per_unit_usd": "cost once free tier is exhausted (null if unknown / free-only)",
+    "base_url": "HTTP API base — used only when dry_run is off",
+    "endpoints": "map of logical action -> path suffix",
+    "rate_limit": "{per_minute, per_day} soft caps enforced by usageTracker",
+    "priority": "lower = preferred when multiple providers can serve a task",
+    "enabled": "operator kill-switch, independent of credentials"
+  },
+  "providers": [
+    {
+      "name": "Higgsfield",
+      "id": "higgsfield",
+      "types": ["video-gen", "image-gen", "upscale", "video-edit"],
+      "auth_type": "api-key",
+      "api_key_env": "HIGGSFIELD_API_KEY",
+      "_note": "Higgsfield is balance-based (query /v1/balance). Placeholder daily cap below just lets it appear as available once a key is set; wire the real balance check in service._call_real before going live.",
+      "free_tier_type": "daily-credits",
+      "free_tier_limit": 50,
+      "cost_per_unit_usd": null,
+      "base_url": "https://api.higgsfield.ai",
+      "endpoints": {
+        "image-gen": "/v1/generate/image",
+        "video-gen": "/v1/generate/video",
+        "upscale": "/v1/upscale",
+        "balance": "/v1/balance"
+      },
+      "rate_limit": { "per_minute": 10, "per_day": 200 },
+      "priority": 20,
+      "enabled": true
+    },
+    {
+      "name": "Krea",
+      "id": "krea",
+      "types": ["image-gen", "video-gen", "3d-gen"],
+      "auth_type": "api-key",
+      "api_key_env": "KREA_API_KEY",
+      "free_tier_type": "daily-credits",
+      "free_tier_limit": 100,
+      "cost_per_unit_usd": null,
+      "base_url": "https://api.krea.ai",
+      "endpoints": {
+        "image-gen": "/v1/images/generations",
+        "video-gen": "/v1/videos/generations"
+      },
+      "rate_limit": { "per_minute": 10, "per_day": 100 },
+      "priority": 10,
+      "enabled": true
+    },
+    {
+      "name": "Runway",
+      "id": "runway",
+      "types": ["image-gen", "video-gen", "video-edit", "upscale"],
+      "auth_type": "api-key",
+      "api_key_env": "RUNWAY_API_KEY",
+      "free_tier_type": "one-time-credits",
+      "free_tier_limit": 125,
+      "cost_per_unit_usd": 0.05,
+      "base_url": "https://api.runwayml.com",
+      "endpoints": {
+        "image-gen": "/v1/text_to_image",
+        "video-gen": "/v1/image_to_video",
+        "upscale": "/v1/video_upscale"
+      },
+      "rate_limit": { "per_minute": 5, "per_day": 125 },
+      "priority": 30,
+      "enabled": true
+    },
+    {
+      "name": "Google Gemini (Nano Banana)",
+      "id": "gemini",
+      "types": ["image-gen", "image-edit"],
+      "auth_type": "api-key",
+      "api_key_env": "GEMINI_API_KEY",
+      "free_tier_type": "free-rate-limited",
+      "free_tier_limit": { "per_minute": 10, "per_day": 100 },
+      "cost_per_unit_usd": null,
+      "base_url": "https://generativelanguage.googleapis.com",
+      "endpoints": {
+        "image-gen": "/v1beta/models/gemini-2.5-flash-image:generateContent",
+        "image-edit": "/v1beta/models/gemini-2.5-flash-image:generateContent"
+      },
+      "rate_limit": { "per_minute": 10, "per_day": 100 },
+      "priority": 15,
+      "enabled": true
+    },
+    {
+      "name": "Grok (xAI)",
+      "id": "grok",
+      "types": ["image-gen", "video-gen"],
+      "auth_type": "api-key",
+      "api_key_env": "GROK_API_KEY",
+      "free_tier_type": "free-rate-limited",
+      "free_tier_limit": { "per_minute": 5, "per_day": 50 },
+      "cost_per_unit_usd": null,
+      "base_url": "https://api.x.ai",
+      "endpoints": {
+        "image-gen": "/v1/images/generations"
+      },
+      "rate_limit": { "per_minute": 5, "per_day": 50 },
+      "priority": 25,
+      "enabled": true
+    }
+  ]
+}

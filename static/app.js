@@ -65,6 +65,9 @@ const elements = {
     claudePrompt: document.getElementById('claudePrompt'),
     copyPromptBtn: document.getElementById('copyPromptBtn'),
     processBtn: document.getElementById('processBtn'),
+    captionsBtn: document.getElementById('captionsBtn'),
+    captionsCard: document.getElementById('captionsCard'),
+    captionLanguage: document.getElementById('captionLanguage'),
     exportSection: document.getElementById('exportSection'),
     processProgress: document.getElementById('processProgress'),
     processFill: document.getElementById('processFill'),
@@ -397,6 +400,11 @@ function displayAnalysis(analysis) {
 elements.toEditBtn.addEventListener('click', () => {
     showSection('editSection');
     updateSteps(3);
+
+    // Captions only apply to videos (needs an audio track to transcribe)
+    const isImage = (state.analysis && state.analysis.is_image) || state.isImage;
+    elements.captionsCard.classList.toggle('hidden', isImage);
+    elements.captionsBtn.disabled = isImage || !state.taskId;
 });
 
 // ============= EDIT OPTIONS =============
@@ -571,6 +579,39 @@ elements.processBtn.addEventListener('click', async () => {
     }
 });
 
+// ============= AUTO CAPTIONS =============
+
+elements.captionsBtn.addEventListener('click', async () => {
+    if (!state.taskId) {
+        showToast('Upload a video first');
+        return;
+    }
+
+    showSection('exportSection');
+    updateSteps(4);
+    elements.processProgress.classList.remove('hidden');
+    elements.exportComplete.classList.add('hidden');
+    elements.exportError.classList.add('hidden');
+
+    try {
+        const response = await fetch(`/api/captions/${state.taskId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ language: elements.captionLanguage.value })
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            elements.processProgress.classList.add('hidden');
+            elements.exportError.classList.remove('hidden');
+            elements.errorMessage.textContent = data.error || 'Failed to start captions';
+            return;
+        }
+        state.statusInterval = setInterval(checkProcessStatus, 500);
+    } catch (error) {
+        showToast('Failed to start caption generation');
+    }
+});
+
 async function checkProcessStatus() {
     try {
         const response = await fetch(`/api/status/${state.taskId}`);
@@ -675,6 +716,7 @@ function resetApp() {
     elements.copyPromptBtn.classList.add('hidden');
     elements.runClaudeCmdsBtn.disabled = true; // Re-disable claude run button
     elements.processBtn.disabled = true;
+    elements.captionsBtn.disabled = true;
     elements.exportComplete.classList.add('hidden');
     elements.exportError.classList.add('hidden');
     elements.processProgress.classList.add('hidden');
