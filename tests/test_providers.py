@@ -14,6 +14,9 @@ from providers.service import ProviderService, ProviderError
 def service(tmp_path, monkeypatch):
     """Dry-run service with krea + gemini credentialed, isolated state file."""
     monkeypatch.setenv('PROVIDER_DRY_RUN', 'true')
+    # These tests exercise the app-owned env-key + shared-budget path, so opt
+    # out of the require-user-key guard (which is ON by default in production).
+    monkeypatch.setenv('PROVIDER_REQUIRE_USER_KEY', 'false')
     monkeypatch.setenv('KREA_API_KEY', 'test-krea')
     monkeypatch.setenv('GEMINI_API_KEY', 'test-gem')
     for missing in ('HIGGSFIELD_API_KEY', 'RUNWAY_API_KEY', 'GROK_API_KEY'):
@@ -83,8 +86,26 @@ def test_live_mode_refuses_until_implemented(tmp_path, monkeypatch):
     registry = load_registry()
     usage = UsageTracker(registry, state_path=str(tmp_path / 's.json'))
     svc = ProviderService(registry=registry, usage=usage)
+    # Supply a user key so we get past the require-user-key guard and reach the
+    # unwired-provider path that this test is actually about.
     with pytest.raises(ProviderError, match='not wired yet'):
-        svc.generate_image('krea', 'x')
+        svc.generate_image('krea', 'x', api_key='user-key')
+
+
+def test_require_user_key_guard_on_by_default(tmp_path, monkeypatch):
+    # Default (no PROVIDER_REQUIRE_USER_KEY set) must reject a keyless request
+    # even though the server HAS an env key — so a shared page can't spend it.
+    monkeypatch.setenv('PROVIDER_DRY_RUN', 'true')
+    monkeypatch.delenv('PROVIDER_REQUIRE_USER_KEY', raising=False)
+    monkeypatch.setenv('KREA_API_KEY', 'server-owned-key')
+    registry = load_registry()
+    usage = UsageTracker(registry, state_path=str(tmp_path / 's.json'))
+    svc = ProviderService(registry=registry, usage=usage)
+    assert svc.require_user_key is True
+    with pytest.raises(ProviderError, match='enter your own API key'):
+        svc.generate_image('krea', 'x')                      # keyless -> blocked
+    r = svc.generate_image('krea', 'x', api_key='friend-key')  # own key -> allowed
+    assert r['byo_key'] is True
 
 
 def test_budget_snapshot_shape(service):

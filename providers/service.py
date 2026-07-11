@@ -30,6 +30,13 @@ def _dry_run_enabled() -> bool:
     return os.environ.get('PROVIDER_DRY_RUN', 'true').strip().lower() != 'false'
 
 
+def _require_user_key() -> bool:
+    # Safe by default: a caller MUST supply their own key, so the server's env
+    # keys can never be spent by a shared/public request. Set to 'false' only
+    # for trusted single-tenant use where falling back to the app's key is OK.
+    return os.environ.get('PROVIDER_REQUIRE_USER_KEY', 'true').strip().lower() != 'false'
+
+
 class ProviderError(Exception):
     """Selection / availability error (no provider, not configured, over budget)."""
 
@@ -41,7 +48,9 @@ class ProviderService:
         # Inject `usage` in tests to point at an isolated state file.
         self.usage = usage if usage is not None else UsageTracker(self.registry)
         self.dry_run = _dry_run_enabled()
-        log.info('ProviderService ready (dry_run=%s, providers=%d)', self.dry_run, len(self.registry))
+        self.require_user_key = _require_user_key()
+        log.info('ProviderService ready (dry_run=%s, require_user_key=%s, providers=%d)',
+                 self.dry_run, self.require_user_key, len(self.registry))
 
     # ---------- discovery ----------
 
@@ -112,6 +121,10 @@ class ProviderService:
 
         # BYO: a key supplied with the request wins; else fall back to env.
         byo = bool(api_key)
+        # Safe-by-default: reject requests that would spend the server's own key,
+        # so a shared/public page can never bill the app owner.
+        if self.require_user_key and not byo:
+            raise ProviderError(f'{p.name}: enter your own API key — this app uses your key, not the server\'s.')
         key = api_key or self.credentials.get_key(p.id)
         if not key:
             raise ProviderError(f'{p.name}: no API key provided')
