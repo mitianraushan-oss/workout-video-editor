@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AI Provider Selector</title>
+  <title>AI Studio — Provider Selector</title>
   <style>
     :root { --bg:#0f0f1a; --card:#1a1a2e; --card2:#22223a; --accent:#6c5ce7;
             --accent2:#a29bfe; --text:#e8e8f0; --muted:#9a9ab0; --ok:#00b894;
@@ -11,43 +11,43 @@
     * { box-sizing:border-box; }
     body { margin:0; background:var(--bg); color:var(--text);
            font-family:'Inter',system-ui,-apple-system,sans-serif; padding:24px; }
-    .wrap { max-width:860px; margin:0 auto; }
+    .wrap { max-width:880px; margin:0 auto; }
     h1 { font-size:22px; margin:0 0 4px; }
-    .sub { color:var(--muted); font-size:13px; margin:0 0 20px; }
+    .sub { color:var(--muted); font-size:13px; margin:0 0 18px; }
     .badge { display:inline-block; font-size:11px; font-weight:600; padding:2px 8px;
              border-radius:20px; margin-left:8px; vertical-align:middle; }
     .badge.dry { background:rgba(253,203,110,.15); color:var(--warn); border:1px solid var(--warn); }
     .badge.live { background:rgba(0,184,148,.15); color:var(--ok); border:1px solid var(--ok); }
     .card { background:var(--card); border:1px solid var(--line); border-radius:14px;
             padding:18px; margin-bottom:16px; }
+    summary { cursor:pointer; font-weight:600; font-size:14px; }
     label { display:block; font-size:12px; color:var(--muted); margin:0 0 6px; font-weight:600;
             text-transform:uppercase; letter-spacing:.04em; }
     select, textarea, input { width:100%; background:var(--card2); color:var(--text);
             border:1px solid var(--line); border-radius:10px; padding:11px 12px; font-size:14px;
             font-family:inherit; }
     textarea { resize:vertical; min-height:70px; }
-    .row { display:flex; gap:12px; flex-wrap:wrap; }
-    .row > div { flex:1; min-width:180px; }
+    .keyrow { display:flex; align-items:center; gap:10px; margin:10px 0; }
+    .keyrow label { flex:0 0 150px; margin:0; text-transform:none; letter-spacing:0; font-weight:500;
+            color:var(--text); font-size:13px; }
+    .keyrow .k { flex:1; }
+    .keyrow .st { flex:0 0 66px; font-size:11px; text-align:right; }
     .tasks { display:flex; gap:8px; flex-wrap:wrap; }
-    .task { flex:1; min-width:90px; text-align:center; padding:9px; border-radius:10px;
-            border:1px solid var(--line); background:var(--card2); cursor:pointer; font-size:13px;
-            user-select:none; }
+    .task { flex:1; min-width:100px; text-align:center; padding:9px; border-radius:10px;
+            border:1px solid var(--line); background:var(--card2); cursor:pointer; font-size:13px; }
     .task.on { border-color:var(--accent); background:rgba(108,92,231,.18); color:var(--accent2); }
+    .task.na { opacity:.4; cursor:not-allowed; }
     button.gen { width:100%; margin-top:16px; background:var(--accent); color:#fff; border:none;
             border-radius:10px; padding:13px; font-size:15px; font-weight:600; cursor:pointer; }
     button.gen:disabled { background:#3a3a55; color:var(--muted); cursor:not-allowed; }
-    .prov { display:flex; align-items:center; justify-content:space-between; padding:10px 12px;
-            border:1px solid var(--line); border-radius:10px; margin-bottom:8px; background:var(--card2); }
-    .prov.off { opacity:.5; }
-    .prov .meta { font-size:12px; color:var(--muted); }
-    .bar { height:6px; background:var(--line); border-radius:4px; overflow:hidden; margin-top:5px; width:160px; }
-    .bar > i { display:block; height:100%; background:var(--accent); }
-    .dot { width:8px; height:8px; border-radius:50%; display:inline-block; margin-right:6px; }
+    .dot { width:8px; height:8px; border-radius:50%; display:inline-block; margin-right:5px; }
     .dot.ok { background:var(--ok); } .dot.no { background:var(--err); }
     .out { white-space:pre-wrap; font-family:ui-monospace,monospace; font-size:12.5px;
            background:#0c0c16; border:1px solid var(--line); border-radius:10px; padding:12px;
-           color:var(--accent2); max-height:220px; overflow:auto; }
+           color:var(--accent2); max-height:240px; overflow:auto; }
+    .out img { max-width:100%; border-radius:8px; }
     .err { color:var(--err); } .muted { color:var(--muted); font-size:12px; }
+    .note { font-size:11.5px; color:var(--muted); margin-top:8px; }
     .spin { display:inline-block; width:14px; height:14px; border:2px solid rgba(255,255,255,.3);
             border-top-color:#fff; border-radius:50%; animation:s .7s linear infinite; vertical-align:-2px; }
     @keyframes s { to { transform:rotate(360deg); } }
@@ -55,23 +55,34 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>AI Provider Selector <span id="mode" class="badge dry">dry-run</span></h1>
-  <p class="sub">Unified image/video generation across providers. Free tier is preferred automatically; budgets update live.</p>
+  <h1>AI Studio <span id="mode" class="badge dry">dry-run</span></h1>
+  <p class="sub">Bring your own API key per provider, pick a task, and generate. Keys are stored only in your browser.</p>
 
+  <!-- ---- API KEYS (browser-only) ---- -->
+  <details class="card" open>
+    <summary>🔑 Your API keys <span class="muted" id="keyCount"></span></summary>
+    <p class="note">Stored in this browser only (localStorage). Sent directly with each request over HTTPS; never saved on the server.</p>
+    <div id="keyRows"></div>
+  </details>
+
+  <!-- ---- COMPOSER ---- -->
   <div class="card">
-    <label>Task type</label>
+    <label>Task</label>
     <div class="tasks" id="tasks">
-      <div class="task on" data-t="image-gen">Image</div>
-      <div class="task" data-t="video-gen">Video</div>
-      <div class="task" data-t="image-edit">Image edit</div>
-      <div class="task" data-t="upscale">Upscale</div>
+      <div class="task on" data-t="image-gen">🖼️ Image gen</div>
+      <div class="task" data-t="image-edit">✏️ Image edit</div>
+      <div class="task" data-t="video-gen">🎬 Video gen</div>
     </div>
 
-    <div class="row" style="margin-top:14px">
-      <div>
-        <label>Provider</label>
-        <select id="provider"><option value="">Auto — best available (free first)</option></select>
-      </div>
+    <div style="margin-top:14px">
+      <label>Provider</label>
+      <select id="provider"></select>
+      <p class="muted" id="provHint"></p>
+    </div>
+
+    <div id="editUpload" style="margin-top:14px; display:none">
+      <label>Source image (to edit)</label>
+      <input type="file" id="imageFile" accept="image/*">
     </div>
 
     <div style="margin-top:14px">
@@ -84,11 +95,6 @@
   </div>
 
   <div class="card">
-    <label>Provider budgets</label>
-    <div id="providers"><p class="muted">Loading…</p></div>
-  </div>
-
-  <div class="card">
     <label>Result</label>
     <div class="out" id="result">No request yet.</div>
   </div>
@@ -96,96 +102,144 @@
 
 <script>
 const API = '/api/ai';
+const LS_KEY = 'ai_provider_keys';
 let TASK = 'image-gen';
+let PROVIDERS = [];              // from /status (names, types) — NOT availability
+let DRY_RUN = true;
 
-function pct(b) {
-  if (!b || b.limit == null || !b.limit) return 0;
-  return Math.max(0, Math.min(100, 100 * (b.remaining ?? 0) / b.limit));
+const loadKeys = () => { try { return JSON.parse(localStorage.getItem(LS_KEY)) || {}; } catch { return {}; } };
+const saveKeys = (k) => localStorage.setItem(LS_KEY, JSON.stringify(k));
+const hasKey = (id) => !!(loadKeys()[id] || '').trim();
+
+async function init() {
+  const data = await (await fetch(`${API}/status`)).json();
+  PROVIDERS = data.providers;
+  DRY_RUN = data.dry_run;
+  const m = document.getElementById('mode');
+  m.className = 'badge ' + (DRY_RUN ? 'dry' : 'live');
+  m.textContent = DRY_RUN ? 'dry-run' : 'live';
+  buildKeyRows();
+  refresh();
 }
 
-async function loadStatus() {
-  const r = await fetch(`${API}/status`);
-  const data = await r.json();
-  document.getElementById('mode').className = 'badge ' + (data.dry_run ? 'dry' : 'live');
-  document.getElementById('mode').textContent = data.dry_run ? 'dry-run' : 'live';
+function buildKeyRows() {
+  const keys = loadKeys();
+  const box = document.getElementById('keyRows');
+  box.innerHTML = '';
+  for (const p of PROVIDERS) {
+    if (p.auth_type !== 'api-key') continue;
+    const row = document.createElement('div');
+    row.className = 'keyrow';
+    row.innerHTML = `
+      <label>${p.name}</label>
+      <input class="k" type="password" placeholder="paste ${p.id} key…" data-id="${p.id}"
+             value="${(keys[p.id] || '').replace(/"/g, '&quot;')}">
+      <span class="st"></span>`;
+    box.appendChild(row);
+  }
+  box.querySelectorAll('input.k').forEach(inp => {
+    const mark = () => { inp.nextElementSibling.innerHTML =
+      inp.value.trim() ? '<span class="dot ok"></span>set' : '<span class="dot no"></span>none'; };
+    mark();
+    inp.addEventListener('input', () => {
+      const k = loadKeys(); const v = inp.value.trim();
+      if (v) k[inp.dataset.id] = v; else delete k[inp.dataset.id];
+      saveKeys(k); mark(); refresh();
+    });
+  });
+  updateKeyCount();
+}
 
-  // provider dropdown: only ones that support the current task AND are available
+function updateKeyCount() {
+  const n = Object.values(loadKeys()).filter(v => (v || '').trim()).length;
+  document.getElementById('keyCount').textContent = n ? `(${n} set)` : '(none yet)';
+}
+
+// availability is computed CLIENT-SIDE from which keys the browser holds
+function usableProviders(task) {
+  return PROVIDERS.filter(p => p.types.includes(task) && hasKey(p.id));
+}
+
+function refresh() {
+  updateKeyCount();
+  // task tabs: grey out ones no keyed provider supports
+  document.querySelectorAll('.task').forEach(t => {
+    const any = PROVIDERS.some(p => p.types.includes(t.dataset.t));
+    t.classList.toggle('na', !any);
+  });
+  document.getElementById('editUpload').style.display = TASK === 'image-edit' ? 'block' : 'none';
+
   const sel = document.getElementById('provider');
   const cur = sel.value;
-  sel.innerHTML = '<option value="">Auto — best available (free first)</option>';
-  for (const p of data.providers) {
-    if (!p.types.includes(TASK)) continue;
+  sel.innerHTML = '';
+  const usable = usableProviders(TASK);
+  const supporting = PROVIDERS.filter(p => p.types.includes(TASK));
+  for (const p of supporting) {
     const o = document.createElement('option');
     o.value = p.id;
-    o.disabled = !p.available;
-    o.textContent = `${p.name}${p.available ? '' : ' — ' + (p.unavailable_reason || 'unavailable')}`;
+    const keyed = hasKey(p.id);
+    o.disabled = !keyed;
+    o.textContent = keyed ? p.name : `${p.name} — add key above`;
     sel.appendChild(o);
   }
-  sel.value = cur;
+  if (usable.some(p => p.id === cur)) sel.value = cur;
+  else if (usable.length) sel.value = usable[0].id;
 
-  // budget list
-  const box = document.getElementById('providers');
-  box.innerHTML = '';
-  for (const p of data.providers) {
-    const b = p.budget || {};
-    const el = document.createElement('div');
-    el.className = 'prov' + (p.available ? '' : ' off');
-    const limitTxt = b.limit == null ? 'no cap' : `${b.remaining}/${b.limit} left`;
-    const resets = b.resets_at ? ` · resets ${new Date(b.resets_at).toLocaleString()}` : '';
-    el.innerHTML = `
-      <div>
-        <div><span class="dot ${p.available ? 'ok' : 'no'}"></span><b>${p.name}</b>
-             <span class="meta"> · ${p.types.join(', ')}</span></div>
-        <div class="meta">${b.kind || ''} · ${limitTxt}${p.available ? '' : ' · ' + (p.unavailable_reason || '')}</div>
-        <div class="bar"><i style="width:${pct(b)}%"></i></div>
-      </div>
-      <div class="meta">${b.kind === 'free-rate-limited' && b.per_minute
-          ? `${b.per_minute.current}/${b.per_minute.limit} per min` : ''}</div>`;
-    box.appendChild(el);
-  }
-  updateHint(data);
-}
-
-function updateHint(data) {
-  const sel = document.getElementById('provider').value;
   const gen = document.getElementById('gen');
   const hint = document.getElementById('hint');
-  const usable = data.providers.filter(p => p.types.includes(TASK) && p.available);
+  const ph = document.getElementById('provHint');
   if (!usable.length) {
     gen.disabled = true;
-    hint.innerHTML = `<span class="err">No provider available for ${TASK}. Add an API key or try again tomorrow.</span>`;
+    hint.innerHTML = `<span class="err">No provider for ${TASK} has a key yet. Add one above.</span>`;
+    ph.textContent = supporting.length ? `Supported by: ${supporting.map(p=>p.name).join(', ')}` : 'No provider supports this task.';
   } else {
     gen.disabled = false;
-    hint.textContent = sel ? '' : `Auto will use "${usable[0].name}" (free tier preferred).`;
+    hint.textContent = DRY_RUN
+      ? 'App is in dry-run — result will be simulated. Set PROVIDER_DRY_RUN=false on the server for real output.'
+      : '';
+    ph.textContent = '';
   }
 }
 
 document.getElementById('tasks').addEventListener('click', e => {
-  const t = e.target.closest('.task'); if (!t) return;
+  const t = e.target.closest('.task'); if (!t || t.classList.contains('na')) return;
   document.querySelectorAll('.task').forEach(x => x.classList.remove('on'));
-  t.classList.add('on'); TASK = t.dataset.t; loadStatus();
+  t.classList.add('on'); TASK = t.dataset.t; refresh();
 });
-document.getElementById('provider').addEventListener('change', () => loadStatus());
 
 document.getElementById('gen').addEventListener('click', async () => {
   const gen = document.getElementById('gen');
   const out = document.getElementById('result');
   const prompt = document.getElementById('prompt').value.trim();
-  if (!prompt) { out.innerHTML = '<span class="err">Enter a prompt first.</span>'; return; }
-
-  const media = TASK.startsWith('video') ? 'video' : 'image';
   const provider = document.getElementById('provider').value;
+  if (!prompt) { out.innerHTML = '<span class="err">Enter a prompt first.</span>'; return; }
+  const apiKey = (loadKeys()[provider] || '').trim();
+  if (!apiKey) { out.innerHTML = '<span class="err">No key for this provider.</span>'; return; }
+
   gen.disabled = true; gen.innerHTML = '<span class="spin"></span> Generating…';
   out.textContent = 'Requesting…';
   try {
-    const r = await fetch(`${API}/generate/${media}`, {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ provider, prompt })
-    });
+    let r;
+    if (TASK === 'image-edit') {
+      const file = document.getElementById('imageFile').files[0];
+      if (!file) { out.innerHTML = '<span class="err">Choose a source image to edit.</span>'; return; }
+      const fd = new FormData();
+      fd.append('provider', provider); fd.append('prompt', prompt);
+      fd.append('api_key', apiKey); fd.append('image', file);
+      r = await fetch(`${API}/edit/image`, { method:'POST', body: fd });
+    } else {
+      const media = TASK.startsWith('video') ? 'video' : 'image';
+      r = await fetch(`${API}/generate/${media}`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ provider, prompt, api_key: apiKey })
+      });
+    }
     const data = await r.json();
     if (!r.ok) {
-      out.innerHTML = `<span class="err">${data.error || 'Request failed'}</span>` +
-        (r.status === 409 ? '\n\nTip: switch provider or try again after the reset.' : '');
+      out.innerHTML = `<span class="err">${data.error || 'Request failed'}</span>`;
+    } else if (data.image_b64) {
+      out.innerHTML = `<img src="data:image/png;base64,${data.image_b64}" alt="result">
+        <div class="note">provider: ${data.provider_name} · model: ${data.model || '—'} · ${data.processing_time}s</div>`;
     } else {
       out.textContent = JSON.stringify(data, null, 2);
     }
@@ -193,11 +247,11 @@ document.getElementById('gen').addEventListener('click', async () => {
     out.innerHTML = `<span class="err">Network error: ${e.message}</span>`;
   } finally {
     gen.innerHTML = 'Generate';
-    await loadStatus();  // refresh budgets after the spend
+    refresh();
   }
 });
 
-loadStatus();
+init();
 </script>
 </body>
 </html>

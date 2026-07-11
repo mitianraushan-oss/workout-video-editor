@@ -58,8 +58,18 @@ def test_per_minute_rate_limit(service):
 
 
 def test_missing_credentials_blocks_generation(service):
-    with pytest.raises(ProviderError, match='no credentials'):
+    with pytest.raises(ProviderError, match='no API key'):
         service.generate_video('runway', 'x')
+
+
+def test_byo_key_bypasses_shared_budget_gate(service):
+    # Shrink krea's shared free tier to 0. The env-key path is now blocked...
+    service.registry['krea'].free_tier_limit = 0
+    with pytest.raises(ProviderError, match='exhausted'):
+        service.generate_image('krea', 'x')
+    # ...but a user-supplied (BYO) key bypasses the shared gate (dry-run ok).
+    r = service.generate_image('krea', 'x', api_key='user-supplied-key')
+    assert r['byo_key'] is True and r['status'] == 'ok'
 
 
 def test_unsupported_task_rejected(service):
@@ -73,7 +83,7 @@ def test_live_mode_refuses_until_implemented(tmp_path, monkeypatch):
     registry = load_registry()
     usage = UsageTracker(registry, state_path=str(tmp_path / 's.json'))
     svc = ProviderService(registry=registry, usage=usage)
-    with pytest.raises(ProviderError, match='not implemented'):
+    with pytest.raises(ProviderError, match='not wired yet'):
         svc.generate_image('krea', 'x')
 
 

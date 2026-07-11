@@ -91,63 +91,102 @@ class ProviderService:
 
     # ---------- generation ----------
 
-    def generate_image(self, provider_id: str, prompt: str, options: dict | None = None) -> dict:
-        return self._generate('image', provider_id, prompt, options or {})
+    def generate_image(self, provider_id, prompt, options=None, api_key=None):
+        return self._generate('image', 'gen', provider_id, prompt, options or {}, api_key)
 
-    def generate_video(self, provider_id: str, prompt: str, options: dict | None = None) -> dict:
-        return self._generate('video', provider_id, prompt, options or {})
+    def generate_video(self, provider_id, prompt, options=None, api_key=None):
+        return self._generate('video', 'gen', provider_id, prompt, options or {}, api_key)
 
-    def _generate(self, media: str, provider_id: str, prompt: str, options: dict) -> dict:
+    def edit_image(self, provider_id, prompt, options=None, api_key=None):
+        return self._generate('image', 'edit', provider_id, prompt, options or {}, api_key)
+
+    def _generate(self, media, action, provider_id, prompt, options, api_key=None):
         p = self.registry.get(provider_id)
         if not p:
             raise ProviderError(f'unknown provider {provider_id!r}')
-        task_type = f'{media}-gen'
+        task_type = f'{media}-{action}'
         if not p.supports(task_type):
             raise ProviderError(f'{p.name} does not support {task_type}')
         if not p.enabled:
             raise ProviderError(f'{p.name} is disabled')
-        if not self.credentials.has_credentials(p.id):
-            raise ProviderError(f'{p.name} has no credentials configured')
 
-        # record() atomically enforces budget + rate limit before we spend.
-        try:
-            remaining = self.usage.record(p.id, 1)
-        except LimitExceeded as e:
-            raise ProviderError(str(e)) from e
+        # BYO: a key supplied with the request wins; else fall back to env.
+        byo = bool(api_key)
+        key = api_key or self.credentials.get_key(p.id)
+        if not key:
+            raise ProviderError(f'{p.name}: no API key provided')
+
+        # The usage tracker guards an APP-OWNED shared free tier. With a
+        # user-supplied (BYO) key the quota lives at the provider, so we only
+        # enforce the shared gate when using the app's own env key.
+        remaining = None
+        if not byo:
+            try:
+                remaining = self.usage.record(p.id, 1)
+            except LimitExceeded as e:
+                raise ProviderError(str(e)) from e
 
         started = time.time()
-        if self.dry_run:
-            result = self._call_dry_run(media, p, prompt, options)
-        else:
-            result = self._call_real(media, p, prompt, options)
+        try:
+            if self.dry_run:
+                result = self._call_dry_run(task_type, p, prompt, options)
+            else:
+                result = self._call_real(task_type, p, prompt, options, key)
+        except ProviderError:
+            raise
+        except Exception as e:  # noqa: BLE001 - provider SDK/network errors
+            # Convert raw SDK/network failures (bad key, content policy, provider
+            # down) into a clean 4xx for the client. NOT logged here — the message
+            # can contain a partial key, and it's returned only to the caller who
+            # owns that key.
+            raise ProviderError(f'{p.name} request failed: {e}') from e
 
         result.update({
             'provider': p.id,
             'provider_name': p.name,
             'dry_run': self.dry_run,
+            'byo_key': byo,
             'processing_time': round(time.time() - started, 3),
             'remaining_budget': remaining,
         })
         return result
 
-    def _call_dry_run(self, media: str, p, prompt: str, options: dict) -> dict:
-        endpoint = p.endpoints.get(f'{media}-gen', '(no endpoint configured)')
-        log.info('DRY-RUN: would call provider %s %s%s | prompt=%r | options=%s',
-                 p.name, p.base_url, endpoint, prompt[:120], options)
+    def _call_dry_run(self, task_type: str, p, prompt: str, options: dict) -> dict:
+        # NOTE: options must never contain secrets (api_key is stripped upstream).
+        endpoint = p.endpoints.get(task_type, '(no endpoint configured)')
+        log.info('DRY-RUN: would call provider %s %s%s | prompt=%r',
+                 p.name, p.base_url, endpoint, prompt[:120])
         return {
             'status': 'ok',
-            'url': f'dry-run://{p.id}/{media}/{uuid.uuid4().hex[:10]}',
+            'url': f'dry-run://{p.id}/{task_type}/{uuid.uuid4().hex[:10]}',
             'tokens_used': 1,
             'note': f'DRY-RUN — no API called. Would POST {p.base_url}{endpoint}',
         }
 
-    def _call_real(self, media: str, p, prompt: str, options: dict) -> dict:
-        # Wire per-provider HTTP calls here, keyed on p.id, using
-        # self.credentials.get_key(p.id) and p.base_url/p.endpoints.
-        # Kept unimplemented on purpose so going live is a deliberate step.
+    def _call_real(self, task_type: str, p, prompt: str, options: dict, key: str) -> dict:
+        """Dispatch to the live per-provider integration. `key` is the resolved
+        API key (BYO or env) and is NEVER logged."""
+        if p.id == 'openai':
+            from providers import openai_provider
+            if task_type == 'image-gen':
+                out = openai_provider.generate_image(key, prompt, options)
+            elif task_type == 'image-edit':
+                src = options.get('input_path')
+                if not src:
+                    raise ProviderError('image-edit requires an uploaded image')
+                out = openai_provider.edit_image_b64(key, src, prompt, options)
+            else:
+                raise ProviderError(f'OpenAI does not support {task_type}')
+            out['status'] = 'ok'
+            return out
+
+        # Other providers: plumbing is ready and the key flows through, but each
+        # one's real HTTP call is unverified. Fill in per provider once you have
+        # a key + confirmed API shape; until then fail loudly rather than guess.
         raise ProviderError(
-            f'Live calls for {p.name} are not implemented yet. '
-            f'Set PROVIDER_DRY_RUN=true, or implement _call_real() for {p.id}.'
+            f'{p.name} live integration is not wired yet. The key was received, '
+            f'but {p.id}\'s API call still needs to be implemented/verified in '
+            f'providers/service._call_real().'
         )
 
     # ---------- status ----------

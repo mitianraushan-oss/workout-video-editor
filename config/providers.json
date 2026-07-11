@@ -17,6 +17,24 @@
   },
   "providers": [
     {
+      "name": "OpenAI (GPT Image)",
+      "id": "openai",
+      "types": ["image-gen", "image-edit"],
+      "auth_type": "api-key",
+      "api_key_env": "OPENAI_API_KEY",
+      "free_tier_type": "paid-only",
+      "free_tier_limit": null,
+      "cost_per_unit_usd": 0.02,
+      "base_url": "https://api.openai.com",
+      "endpoints": {
+        "image-gen": "/v1/images/generations",
+        "image-edit": "/v1/images/edits"
+      },
+      "rate_limit": {},
+      "priority": 5,
+      "enabled": true
+    },
+    {
       "name": "Higgsfield",
       "id": "higgsfield",
       "types": ["video-gen", "image-gen", "upscale", "video-edit"],
