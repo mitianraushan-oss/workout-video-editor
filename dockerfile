@@ -23,5 +23,12 @@ COPY . .
 # Expose the port Render expects
 EXPOSE 10000
 
-# Command to run the app
-CMD ["gunicorn", "--bind", "0.0.0.0:10000", "app:app"]
+# Command to run the app.
+# --workers 1  : keep a single worker so the in-memory processing_status dict is
+#                consistent (multiple workers => status polls could hit a worker
+#                that never saw the task => stuck at 0% / "task not found").
+# --threads 8  : gthread worker so long background jobs (OpenCV analysis / ffmpeg)
+#                don't starve the arbiter heartbeat and get the worker killed.
+# --timeout 600: don't kill a worker mid-job (default is 30s, which aborts real
+#                video processing and leaves the UI stuck at 0%).
+CMD ["gunicorn", "--bind", "0.0.0.0:10000", "--workers", "1", "--threads", "8", "--timeout", "600", "app:app"]
