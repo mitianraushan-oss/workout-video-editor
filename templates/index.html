@@ -324,13 +324,25 @@
                     </div>
                 </div>
 
-                <!-- Claude AI Integration (Updated Section) -->
-                <div class="card">
-                    <h3 class="card-title">
+                <!-- Primary action: run the auto-generated edits (Message, Label,
+                     resize, etc.). This is what applies your typed message. -->
+                <button id="processBtn" class="btn btn-primary btn-full" disabled>
+                    <i class="fas fa-wand-magic-sparkles"></i>
+                    Apply Edits & Export
+                </button>
+
+                <!-- Advanced: hand-written ffmpeg via Claude. Collapsed so it's not
+                     mistaken for the primary flow. -->
+                <details class="card" style="margin-top: 16px;">
+                    <summary class="card-title" style="cursor: pointer; list-style: revert;">
                         <i class="fas fa-robot"></i>
-                        Claude AI Custom Edit
-                    </h3>
-                    
+                        Advanced: Claude custom edit (optional)
+                    </summary>
+                    <p class="hint-text" style="margin: 12px 0 18px;">
+                        <i class="fas fa-info-circle"></i>
+                        Most people don't need this. It runs ONLY the ffmpeg command you paste below — your Message and Label above are applied by "Apply Edits &amp; Export", not here.
+                    </p>
+
                     <!-- Step 1: Generate & Copy Prompt -->
                     <label class="form-label" style="margin-bottom: 8px;">
                         <i class="fas fa-copy"></i>
@@ -365,16 +377,11 @@
                         Paste the code block Claude replies with. The app will extract and run it automatically.
                     </p>
 
-                    <button id="runClaudeCmdsBtn" class="btn btn-primary btn-full" disabled>
+                    <button id="runClaudeCmdsBtn" class="btn btn-secondary btn-full" disabled>
                         <i class="fas fa-play"></i>
-                        Run Claude's Custom Commands
+                        Run pasted command instead
                     </button>
-                </div>
-
-                <button id="processBtn" class="btn btn-primary btn-full" disabled>
-                    <i class="fas fa-cog"></i>
-                    Process Video (Auto-Commands)
-                </button>
+                </details>
 
                 <!-- Auto Captions (videos with speech only) -->
                 <div class="card" id="captionsCard">

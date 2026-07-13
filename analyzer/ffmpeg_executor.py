@@ -158,6 +158,20 @@ def _output_size(preferences, orientation):
     return w, h, RESOLUTION_LABELS[resolution]
 
 
+def _blur_fill_command(w, h):
+    """Fit an image to w×h with a blurred fill background (no black bars, no crop).
+    A zoomed+blurred copy fills the frame; the whole photo, scaled to fit, sits
+    centered on top."""
+    return (
+        f'ffmpeg -i "{{INPUT}}" -filter_complex '
+        f'"[0:v]split=2[bg][fg];'
+        f'[bg]scale={w}:{h}:force_original_aspect_ratio=increase:flags=lanczos,'
+        f'crop={w}:{h},gblur=sigma=25[bgb];'
+        f'[fg]scale={w}:{h}:force_original_aspect_ratio=decrease:flags=lanczos[fgs];'
+        f'[bgb][fgs]overlay=(W-w)/2:(H-h)/2" -q:v 2 "{{OUTPUT}}"'
+    )
+
+
 def build_image_commands(analysis, preferences):
     """Build the auto-edit pipeline for a still image (no audio/fade/video codecs)."""
     commands = []
@@ -186,7 +200,9 @@ def build_image_commands(analysis, preferences):
             'command': 'ffmpeg -i "{INPUT}" -vf "unsharp=5:5:1.0" "{OUTPUT}"'
         })
 
-    # Resize/pad for platform (scale+pad is safe for any orientation)
+    # Resize for platform. Instead of black letterbox bars, fill the empty
+    # space with a blurred, zoomed copy of the photo itself — no content is
+    # cropped (the sharp photo sits centered on top) and it looks far better.
     if platform_choice in ['instagram-reels', 'tiktok']:
         size = _output_size(preferences, 'portrait')
         if size:
@@ -194,7 +210,7 @@ def build_image_commands(analysis, preferences):
             commands.append({
                 'name': f'Fit to 9:16 ({label})',
                 'icon': '📐',
-                'command': f'ffmpeg -i "{{INPUT}}" -vf "scale={w}:{h}:force_original_aspect_ratio=decrease:flags=lanczos,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2" "{{OUTPUT}}"'
+                'command': _blur_fill_command(w, h),
             })
     elif platform_choice == 'youtube':
         size = _output_size(preferences, 'landscape')
@@ -203,7 +219,7 @@ def build_image_commands(analysis, preferences):
             commands.append({
                 'name': f'Fit to 16:9 ({label})',
                 'icon': '📐',
-                'command': f'ffmpeg -i "{{INPUT}}" -vf "scale={w}:{h}:force_original_aspect_ratio=decrease:flags=lanczos,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2" "{{OUTPUT}}"'
+                'command': _blur_fill_command(w, h),
             })
 
     # Label overlay (only when the user picked a content label)
