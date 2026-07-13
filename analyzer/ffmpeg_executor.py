@@ -215,6 +215,29 @@ def build_image_commands(analysis, preferences):
             'command': f'''ffmpeg -i "{{INPUT}}" -vf "drawtext=text='{label}':fontsize=50:fontcolor=white:x=(w-text_w)/2:y=50:boxcolor=black@0.6:box=1" "{{OUTPUT}}"'''
         })
 
+    # Custom message overlay — the user's typed text, rendered legibly on the
+    # image. Uses textfile + expansion=none so ANY characters (quotes, colons,
+    # %, emoji) render literally; font size scales with the image so it looks
+    # right at any resolution, with an outline + translucent box for contrast.
+    overlay_file = preferences.get('_overlay_textfile')
+    if overlay_file:
+        y_pos = {
+            'top': 'h/12',
+            'center': '(h-text_h)/2',
+            'bottom': 'h-text_h-h/12',
+        }.get(preferences.get('overlay_position', 'bottom'), 'h-text_h-h/12')
+        commands.append({
+            'name': 'Add Message',
+            'icon': '💬',
+            'command': (
+                f'ffmpeg -i "{{INPUT}}" -vf '
+                f'"drawtext=textfile=\'{overlay_file}\':expansion=none:'
+                f'fontsize=w/18:fontcolor=white:borderw=3:bordercolor=black@0.85:'
+                f'box=1:boxcolor=black@0.45:boxborderw=25:line_spacing=12:'
+                f'x=(w-text_w)/2:y={y_pos}" -q:v 2 "{{OUTPUT}}"'
+            )
+        })
+
     if not commands:
         # Always produce at least one step so export has something to run
         commands.append({

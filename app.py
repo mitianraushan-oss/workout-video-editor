@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, jsonify, send_file
 import os
+import re
 import shutil
 import threading
 import time
@@ -73,6 +74,32 @@ def allowed_file(filename, file_type='video'):
 
 def is_image_file(filename):
     return filename.lower().endswith(('.jpg', '.jpeg', '.png', '.webp'))
+
+
+# Emoji / pictographic ranges ffmpeg's drawtext can't render (they'd show as
+# empty "tofu" boxes), plus variation selectors and the zero-width joiner.
+_EMOJI_RE = re.compile(
+    '[\U0001F000-\U0001FAFF\U00002600-\U000027BF\U00002B00-\U00002BFF'
+    '\U0000FE00-\U0000FE0F\U0000200D]'
+)
+
+
+def _wrap_overlay_text(text, width=20, max_lines=6, max_chars=280):
+    """Wrap the user's message for a legible centered overlay: strip emoji (not
+    renderable by drawtext), cap the length, then soft-wrap long lines while
+    preserving any newlines the user typed."""
+    import textwrap
+    text = _EMOJI_RE.sub('', text)
+    # collapse spaces left behind by removed emoji, keep newlines
+    text = '\n'.join(re.sub(r' {2,}', ' ', ln).strip() for ln in text.splitlines())
+    text = text[:max_chars]
+    lines = []
+    for para in text.splitlines() or ['']:
+        lines.extend(textwrap.wrap(para, width=width) or [''])
+    if len(lines) > max_lines:
+        lines = lines[:max_lines]
+        lines[-1] = lines[-1][:width - 1] + '…'
+    return '\n'.join(lines)
 
 
 def output_path_for(task_id, task):
@@ -216,6 +243,17 @@ def generate_commands():
     analysis = task.get('analysis')
     if not analysis:
         return jsonify({'error': 'Analyze the file first'}), 400
+
+    # Custom message overlay: write the typed text to a file so ffmpeg's
+    # drawtext renders it via textfile= (no inline-escaping pitfalls). The
+    # builder picks it up through preferences['_overlay_textfile'].
+    overlay_text = (preferences.get('overlay_text') or '').strip()
+    if overlay_text:
+        wrapped = _wrap_overlay_text(overlay_text)
+        textfile = os.path.join(os.path.dirname(task['filepath']), 'overlay.txt')
+        with open(textfile, 'w', encoding='utf-8') as f:
+            f.write(wrapped)
+        preferences['_overlay_textfile'] = textfile
 
     commands = build_commands(analysis, preferences, task.get('music_path'))
 

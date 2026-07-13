@@ -15,7 +15,9 @@ const state = {
         music_volume: 15,
         add_text: true,
         add_fade: true,
-        auto_brightness: true
+        auto_brightness: true,
+        overlay_text: '',
+        overlay_position: 'bottom'
     },
     currentStep: 1,
     statusInterval: null
@@ -52,6 +54,8 @@ const elements = {
     editSection: document.getElementById('editSection'),
     workoutType: document.getElementById('workoutType'),
     customWorkout: document.getElementById('customWorkout'),
+    overlayText: document.getElementById('overlayText'),
+    overlayPosition: document.getElementById('overlayPosition'),
     moodType: document.getElementById('moodType'),
     platformType: document.getElementById('platformType'),
     musicVolume: document.getElementById('musicVolume'),
@@ -440,6 +444,20 @@ elements.customWorkout.addEventListener('input', (e) => {
     state.preferences.workout_type = e.target.value;
 });
 
+// Message-on-image text
+elements.overlayText.addEventListener('input', (e) => {
+    state.preferences.overlay_text = e.target.value;
+});
+
+// Message position selector
+elements.overlayPosition.querySelectorAll('.pill').forEach(btn => {
+    btn.addEventListener('click', () => {
+        elements.overlayPosition.querySelectorAll('.pill').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        state.preferences.overlay_position = btn.dataset.value;
+    });
+});
+
 // Platform selector
 elements.platformType.querySelectorAll('.platform-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -689,8 +707,11 @@ function resetApp() {
         music_volume: 15,
         add_text: true,
         add_fade: true,
-        auto_brightness: true
+        auto_brightness: true,
+        overlay_text: '',
+        overlay_position: 'bottom'
     };
+    if (elements.overlayText) elements.overlayText.value = '';
 
     // Reset UI
     showSection('uploadSection');
